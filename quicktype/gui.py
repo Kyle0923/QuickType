@@ -62,6 +62,9 @@ class SnippetSearchWindow:
         self.search_var.trace("w", self._on_search_input)
         self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=40)
         self.search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.search_entry.bind("<Up>", self._on_arrow_key)
+        self.search_entry.bind("<Down>", self._on_arrow_key)
+        self.search_entry.bind("<Control-w>", self._on_ctrl_w)
         self.search_entry.focus_set()
 
         # Snippet list
@@ -187,6 +190,57 @@ class SnippetSearchWindow:
             self.selected_index = selection[0]
             if self.selected_index < len(self.filtered_snippets):
                 self._update_preview(self.filtered_snippets[self.selected_index])
+
+    def _on_arrow_key(self, event: tk.Event) -> str:
+        """Move the current snippet selection with the keyboard arrow keys."""
+        if not self.filtered_snippets:
+            return "break"
+
+        offset = -1 if event.keysym == "Up" else 1
+        self._move_selection(offset)
+        return "break"
+
+    def _move_selection(self, offset: int) -> None:
+        """Move the selected snippet up or down with wrap-around."""
+        if not self.filtered_snippets:
+            return
+
+        next_index = (self.selected_index + offset) % len(self.filtered_snippets)
+        self.selected_index = next_index
+        self.snippet_listbox.selection_clear(0, tk.END)
+        self.snippet_listbox.selection_set(next_index)
+        self.snippet_listbox.activate(next_index)
+        self._update_preview(self.filtered_snippets[next_index])
+
+    def _on_ctrl_w(self, event: tk.Event) -> str:
+        """Delete the previous word and any extra spaces before the cursor."""
+        current = self.search_var.get()
+        cursor_index = self.search_entry.index(tk.INSERT)
+        if cursor_index <= 0:
+            return "break"
+
+        prefix = current[:cursor_index]
+        suffix = current[cursor_index:]
+        trimmed_prefix = prefix.rstrip()
+
+        if not trimmed_prefix:
+            self.search_var.set(suffix)
+            self.search_entry.icursor(0)
+            return "break"
+
+        last_space_index = trimmed_prefix.rfind(" ")
+        if last_space_index == -1:
+            new_prefix = ""
+        else:
+            new_prefix = trimmed_prefix[:last_space_index].rstrip()
+
+        if suffix and suffix[0] != " " and new_prefix:
+            new_prefix = new_prefix + " "
+
+        new_text = new_prefix + suffix
+        self.search_var.set(new_text)
+        self.search_entry.icursor(len(new_prefix))
+        return "break"
 
     def _update_preview(self, snippet: Snippet) -> None:
         """Update the content preview for a snippet."""
