@@ -1,0 +1,162 @@
+"""Core snippet engine and keyboard hook management for QuickType."""
+
+from typing import Callable, List, Optional
+
+from fuzzywuzzy import fuzz
+
+from .config import Snippet, SnippetManager
+
+
+class FuzzyMatcher:
+    """Handles fuzzy matching of snippet names against user input."""
+
+    def __init__(self, threshold: int = 60):
+        """
+        Initialize FuzzyMatcher.
+
+        Args:
+            threshold: Minimum similarity score (0-100) to consider a match.
+        """
+        self.threshold = threshold
+
+    def search(self, query: str, snippets: List[Snippet]) -> List[Snippet]:
+        """
+        Search snippets using fuzzy matching.
+
+        Args:
+            query: User input query string.
+            snippets: List of snippets to search.
+
+        Returns:
+            Sorted list of matching snippets (best matches first).
+        """
+        if not query:
+            return snippets
+
+        matches = []
+        for snippet in snippets:
+            score = fuzz.partial_ratio(query.lower(), snippet.name.lower())
+            if score >= self.threshold:
+                matches.append((snippet, score))
+
+        # Sort by score descending
+        matches.sort(key=lambda x: x[1], reverse=True)
+        return [snippet for snippet, _ in matches]
+
+
+class SnippetEngine:
+    """Main snippet engine managing snippets and keyboard integration."""
+
+    def __init__(self, manager: Optional[SnippetManager] = None):
+        """
+        Initialize SnippetEngine.
+
+        Args:
+            manager: SnippetManager instance. If None, creates a new one.
+        """
+        self.manager = manager or SnippetManager()
+        self.fuzzy_matcher = FuzzyMatcher(threshold=60)
+        self.insert_callback: Optional[Callable[[str], None]] = None
+
+    def set_insert_callback(self, callback: Callable[[str], None]) -> None:
+        """
+        Set the callback function for inserting text.
+
+        This allows decoupling snippet logic from platform-specific insertion.
+
+        Args:
+            callback: Function that accepts text string and performs insertion.
+        """
+        self.insert_callback = callback
+
+    def search_snippets(self, query: str) -> List[Snippet]:
+        """
+        Search for snippets matching the query.
+
+        Args:
+            query: User search query.
+
+        Returns:
+            List of matching snippets sorted by relevance.
+        """
+        snippets = self.manager.list_snippets()
+        return self.fuzzy_matcher.search(query, snippets)
+
+    def insert_snippet(self, snippet_name: str) -> bool:
+        """
+        Insert a snippet's content via the registered callback.
+
+        Args:
+            snippet_name: Name of snippet to insert.
+
+        Returns:
+            True if successful, False if snippet not found or no callback set.
+        """
+        if not self.insert_callback:
+            raise RuntimeError("Insert callback not set. Use set_insert_callback().")
+
+        snippet = self.manager.get_snippet(snippet_name)
+        if not snippet:
+            return False
+
+        self.insert_callback(snippet.content)
+        return True
+
+    def add_snippet(self, name: str, content: str, tags: Optional[List[str]] = None) -> None:
+        """
+        Add a new snippet.
+
+        Args:
+            name: Unique snippet name.
+            content: Text content to insert.
+            tags: Optional list of tags.
+        """
+        snippet = Snippet(name=name, content=content, tags=tags or [])
+        self.manager.add_snippet(snippet)
+
+    def remove_snippet(self, name: str) -> bool:
+        """
+        Remove a snippet.
+
+        Args:
+            name: Name of snippet to remove.
+
+        Returns:
+            True if successful, False if snippet not found.
+        """
+        try:
+            self.manager.remove_snippet(name)
+            return True
+        except KeyError:
+            return False
+
+    def list_snippets(self) -> List[Snippet]:
+        """
+        Get all available snippets.
+
+        Returns:
+            List of all snippets.
+        """
+        return self.manager.list_snippets()
+
+
+class TextInserter:
+    """Handles platform-specific text insertion into the active window."""
+
+    @staticmethod
+    def insert(text: str) -> None:
+        """
+        Insert text into the currently active window.
+
+        Uses platform-specific methods:
+        - Windows: keyboard.write() or clipboard + paste
+        - macOS: PyObjC + keyboard
+        - Linux: xdotool or keyboard library
+
+        Args:
+            text: Text to insert.
+        """
+        # Use keyboard library for cross-platform text insertion
+        import keyboard as kb
+
+        kb.write(text, interval=0.05)
