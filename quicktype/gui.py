@@ -5,6 +5,7 @@ from tkinter import ttk
 from typing import Callable, List, Optional
 
 from .config import Snippet
+from .core import FuzzyMatcher
 
 
 class SnippetSearchWindow:
@@ -15,6 +16,9 @@ class SnippetSearchWindow:
         on_select: Callable[[str], None],
         on_close: Callable[[], None],
         snippets: Optional[List[Snippet]] = None,
+        hotkey: str = "ctrl+shift+space",
+        on_hotkey_change: Optional[Callable[[str], None]] = None,
+        on_exit: Optional[Callable[[], None]] = None,
     ):
         """
         Initialize the snippet search window.
@@ -29,6 +33,10 @@ class SnippetSearchWindow:
         self.snippets = snippets or []
         self.filtered_snippets: List[Snippet] = []
         self.selected_index = 0
+        self.hotkey = hotkey
+        self.on_hotkey_change = on_hotkey_change
+        self.on_exit = on_exit
+        self.fuzzy_matcher = FuzzyMatcher(threshold=60)
 
         self.root = tk.Tk()
         self.root.title("QuickType Search")
@@ -42,6 +50,8 @@ class SnippetSearchWindow:
 
     def _setup_ui(self) -> None:
         """Set up the user interface."""
+        self._setup_menu()
+
         # Search input
         search_frame = ttk.Frame(self.root)
         search_frame.pack(pady=10, padx=10, fill=tk.X)
@@ -50,9 +60,9 @@ class SnippetSearchWindow:
 
         self.search_var = tk.StringVar()
         self.search_var.trace("w", self._on_search_input)
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=40)
-        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        search_entry.focus()
+        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=40)
+        self.search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.search_entry.focus_set()
 
         # Snippet list
         list_frame = ttk.Frame(self.root)
@@ -94,17 +104,60 @@ class SnippetSearchWindow:
         # Update list with all snippets
         self._update_snippet_list(self.snippets)
 
+    def _setup_menu(self) -> None:
+        """Create the top-level menu bar with application settings."""
+        menubar = tk.Menu(self.root)
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        settings_menu.add_command(label="Hotkey...", command=self._open_hotkey_dialog)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        menubar.add_command(label="Exit", command=self._request_exit)
+        self.root.config(menu=menubar)
+
+    def _request_exit(self) -> None:
+        """Request an application exit from the menu."""
+        if self.on_exit:
+            self.on_exit()
+
+    def _open_hotkey_dialog(self) -> None:
+        """Open a small modal dialog for editing the global hotkey."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("QuickType Settings")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Hotkey:").grid(row=0, column=0, padx=10, pady=(10, 5), sticky="w")
+
+        hotkey_var = tk.StringVar(value=self.hotkey)
+        entry = ttk.Entry(dialog, textvariable=hotkey_var, width=25)
+        entry.grid(row=0, column=1, padx=(0, 10), pady=(10, 5), sticky="ew")
+        entry.focus_set()
+
+        def save_hotkey() -> None:
+            new_hotkey = hotkey_var.get().strip()
+            if not new_hotkey:
+                return
+            self.hotkey = new_hotkey
+            if self.on_hotkey_change:
+                self.on_hotkey_change(new_hotkey)
+            dialog.destroy()
+
+        button_row = ttk.Frame(dialog)
+        button_row.grid(row=1, column=0, columnspan=2, pady=(0, 10))
+        ttk.Button(button_row, text="Save", command=save_hotkey).pack(side=tk.LEFT, padx=(10, 5))
+        ttk.Button(button_row, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=(5, 10))
+
+        dialog.columnconfigure(1, weight=1)
+
+    def update_hotkey(self, hotkey: str) -> None:
+        """Keep the current hotkey value in sync with the app."""
+        self.hotkey = hotkey
+
     def _on_search_input(self, *args) -> None:
         """Handle search input changes."""
         query = self.search_var.get()
 
-        # Filter snippets (simple substring match for now)
         if query:
-            self.filtered_snippets = [
-                s
-                for s in self.snippets
-                if query.lower() in s.name.lower() or query.lower() in s.content.lower()
-            ]
+            self.filtered_snippets = self.fuzzy_matcher.search(query, self.snippets)
         else:
             self.filtered_snippets = self.snippets
 
@@ -170,9 +223,18 @@ class SnippetSearchWindow:
             # Show and focus window
             self.root.deiconify()
             self.root.lift()
-            self.root.focus()
+            self.root.attributes("-topmost", True)
+            self.root.after(50, self._focus_search_entry)
+            self.root.attributes("-topmost", False)
         except Exception as e:
             print(f"Error showing window: {e}")
+
+    def _focus_search_entry(self) -> None:
+        """Focus and place the cursor in the search entry."""
+        if hasattr(self, "search_entry"):
+            self.search_entry.focus_set()
+            self.search_entry.icursor(tk.END)
+            self.root.update_idletasks()
 
     def start_mainloop(self) -> None:
         """Start the Tkinter mainloop (call once from app.start())."""

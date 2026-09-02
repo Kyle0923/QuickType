@@ -52,7 +52,7 @@ A lightweight background desktop app with global hotkey trigger for quickly inse
 quicktype run
 ```
 
-The app runs in the background and listens for the global hotkey: **Ctrl+Shift+Q**
+The app runs in the background and listens for the global hotkey: **Ctrl+Shift+Space**
 
 Press the hotkey to open the snippet search window. Type to search, select a snippet, and press Enter to insert it into the active window.
 

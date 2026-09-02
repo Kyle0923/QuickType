@@ -2,26 +2,26 @@
 
 from typing import Callable, List, Optional
 
-from fuzzywuzzy import fuzz
+from iterfzf import iterfzf
 
 from .config import Snippet, SnippetManager
 
 
 class FuzzyMatcher:
-    """Handles fuzzy matching of snippet names against user input."""
+    """Handles fuzzy matching of snippet names using the fzf algorithm."""
 
     def __init__(self, threshold: int = 60):
         """
         Initialize FuzzyMatcher.
 
         Args:
-            threshold: Minimum similarity score (0-100) to consider a match.
+            threshold: Kept for API compatibility; matching is delegated to iterfzf.
         """
         self.threshold = threshold
 
     def search(self, query: str, snippets: List[Snippet]) -> List[Snippet]:
         """
-        Search snippets using fuzzy matching.
+        Search snippets using the fzf-style matching algorithm from iterfzf.
 
         Args:
             query: User input query string.
@@ -33,15 +33,27 @@ class FuzzyMatcher:
         if not query:
             return snippets
 
-        matches = []
-        for snippet in snippets:
-            score = fuzz.partial_ratio(query.lower(), snippet.name.lower())
-            if score >= self.threshold:
-                matches.append((snippet, score))
+        names = [snippet.name for snippet in snippets]
+        matched_names = iterfzf(
+            names,
+            multi=True,
+            case_sensitive=False,
+            extended=True,
+            sort=True,
+            __extra__=[f"--filter={query}"]
+        )
 
-        # Sort by score descending
-        matches.sort(key=lambda x: x[1], reverse=True)
-        return [snippet for snippet, _ in matches]
+        if not matched_names:
+            return []
+        if isinstance(matched_names, str):
+            matched_names = [matched_names]
+
+        name_to_snippet = {snippet.name: snippet for snippet in snippets}
+        return [
+            name_to_snippet[name]
+            for name in matched_names
+            if name in name_to_snippet
+        ]
 
 
 class SnippetEngine:

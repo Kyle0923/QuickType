@@ -23,7 +23,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
     if not args or args[0] == "run":
         # Launch the background app (default behavior)
-        app = QuickTypeApp(hotkey="ctrl+shift+q")
+        app = QuickTypeApp(hotkey="ctrl+shift+space")
         app.start()
         return 0
 

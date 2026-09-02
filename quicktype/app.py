@@ -11,7 +11,7 @@ from .hotkey import HotkeyManager
 class QuickTypeApp:
     """Main application - manages engine, hotkeys, and GUI."""
 
-    def __init__(self, hotkey: str = "ctrl+shift+q"):
+    def __init__(self, hotkey: str):
         """
         Initialize QuickTypeApp.
 
@@ -36,6 +36,9 @@ class QuickTypeApp:
             on_select=self._on_snippet_selected,
             on_close=self._on_window_hidden,
             snippets=self.engine.list_snippets(),
+            hotkey=self.hotkey_manager.hotkey,
+            on_hotkey_change=self.update_hotkey,
+            on_exit=self.quit,
         )
         # Hide window initially (will show on hotkey)
         self.gui_window.root.withdraw()
@@ -73,6 +76,11 @@ class QuickTypeApp:
                 pass
         print("QuickType stopped.")
 
+    def quit(self) -> None:
+        """Exit the app completely from the UI."""
+        self.stop()
+        raise SystemExit(0)
+
     def _on_hotkey_pressed(self) -> None:
         """Callback when hotkey is pressed - show search window."""
         if not self.gui_window:
@@ -86,6 +94,15 @@ class QuickTypeApp:
             self.gui_window.show()
         except Exception as e:
             print(f"Error showing search window: {e}")
+
+    def update_hotkey(self, hotkey: str) -> None:
+        """Update the global hotkey binding from the Settings menu."""
+        try:
+            self.hotkey_manager.set_hotkey(hotkey, self._on_hotkey_pressed)
+            if self.gui_window:
+                self.gui_window.update_hotkey(hotkey)
+        except Exception as e:
+            print(f"Error updating hotkey: {e}")
 
     def _on_snippet_selected(self, snippet_name: str) -> None:
         """Callback when a snippet is selected - insert its content."""

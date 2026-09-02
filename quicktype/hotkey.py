@@ -8,16 +8,33 @@ import keyboard
 class HotkeyManager:
     """Manages global hotkey registration and callbacks."""
 
-    def __init__(self, hotkey: str = "ctrl+shift+q"):
+    def __init__(self, hotkey: str):
         """
         Initialize HotkeyManager.
 
         Args:
-            hotkey: Hotkey combination (e.g., "ctrl+shift+q", "alt+space").
+            hotkey: Hotkey combination (e.g., "ctrl+shift+space", "alt+space").
         """
         self.hotkey = hotkey
         self.callback: Optional[Callable[[], None]] = None
         self.is_registered = False
+
+    def set_hotkey(self, hotkey: str, callback: Optional[Callable[[], None]] = None) -> None:
+        """Update the registered hotkey while preserving the current callback."""
+        normalized = hotkey.strip()
+        if not normalized:
+            raise ValueError("Hotkey cannot be empty.")
+
+        if callback is not None:
+            self.callback = callback
+
+        if self.is_registered and self.hotkey != normalized:
+            self.unregister()
+
+        self.hotkey = normalized
+
+        if self.callback is not None and not self.is_registered:
+            self.register(self.callback)
 
     def register(self, callback: Callable[[], None]) -> None:
         """
