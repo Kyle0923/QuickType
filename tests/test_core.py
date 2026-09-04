@@ -237,35 +237,25 @@ def test_text_inserter_uses_keyboard_delay_argument(monkeypatch):
 def test_text_inserter_paste_uses_ctrl_v(monkeypatch):
     from quicktype.core import TextInserter
 
-    pressed = {"keys": None}
+    captured = {"keys": None, "clipboard": None}
 
     class FakeKeyboard:
         @staticmethod
         def press_and_release(keys):
-            pressed["keys"] = keys
+            captured["keys"] = keys
 
-    class FakeTk:
-        def withdraw(self):
-            return None
-
-        def clipboard_clear(self):
-            return None
-
-        def clipboard_append(self, value):
-            self.value = value
-
-        def update(self):
-            return None
-
-        def destroy(self):
-            return None
+    class FakePyperclip:
+        @staticmethod
+        def copy(value):
+            captured["clipboard"] = value
 
     monkeypatch.setitem(sys.modules, "keyboard", FakeKeyboard)
-    monkeypatch.setattr("tkinter.Tk", lambda: FakeTk())
+    monkeypatch.setitem(sys.modules, "pyperclip", FakePyperclip)
 
     TextInserter.paste("hello")
 
-    assert pressed["keys"] == "ctrl+v"
+    assert captured["clipboard"] == "hello"
+    assert captured["keys"] == "ctrl+v"
 
 
 def test_hotkey_manager_can_update_hotkey_binding():

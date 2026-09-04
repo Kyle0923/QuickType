@@ -1,11 +1,14 @@
 """Main QuickType application - background daemon with GUI hotkey trigger."""
 
+from __future__ import annotations
+
 from typing import List, Optional
 
 from .SnippetManager import SnippetManager
 from .core import SnippetEngine, TextInserter
 from .gui import SnippetSearchWindow
 from .hotkey import HotkeyManager
+from .icons import create_app_icon_image
 
 
 class QuickTypeApp:
@@ -22,6 +25,7 @@ class QuickTypeApp:
         self.engine = SnippetEngine(self.manager)
         self.hotkey_manager = HotkeyManager(hotkey)
         self.gui_window: Optional[SnippetSearchWindow] = None
+        self.tray_icon = None
         self.is_running = False
 
         # Set up text insertion callback
@@ -29,6 +33,7 @@ class QuickTypeApp:
 
         # Create GUI window once (reuse for minimize-to-tray)
         self._init_gui_window()
+        self._init_tray_icon()
 
     def _init_gui_window(self) -> None:
         """Initialize the GUI window (called once at startup)."""
@@ -43,9 +48,59 @@ class QuickTypeApp:
         # Hide window initially (will show on hotkey)
         self.gui_window.root.withdraw()
 
+    def _create_tray_icon_image(self):
+        """Create the shared application icon for the system tray."""
+        return create_app_icon_image(size=64)
+
+    def _init_tray_icon(self) -> None:
+        """Initialize the tray icon service with a right-click Exit menu."""
+        try:
+            import pystray
+
+            menu = pystray.Menu(
+                pystray.MenuItem("Show", self._on_tray_show, default=True, visible=False),
+                pystray.MenuItem("Exit", self._on_tray_exit),
+            )
+            self.tray_icon = pystray.Icon(
+                "quicktype",
+                icon=self._create_tray_icon_image(),
+                title=f"QuickType ({self.hotkey_manager.hotkey})",
+                menu=menu,
+            )
+            # Keep tray icon visible for the app lifetime.
+            self.tray_icon.run_detached(setup=lambda icon: setattr(icon, "visible", True))
+        except Exception as e:
+            self.tray_icon = None
+            print(f"Tray icon disabled: {e}")
+
+    def _on_tray_show(self, icon=None, item=None) -> None:
+        """Show the app window from tray icon activation."""
+        _ = icon, item
+        if self.gui_window:
+            self.gui_window.root.after(0, self._show_window_from_tray)
+
+    def _show_window_from_tray(self) -> None:
+        """Bring app window to front or show it when hidden."""
+        if not self.gui_window:
+            return
+
+        if self.gui_window.is_visible():
+            self.gui_window.bring_to_front()
+            return
+
+        self.gui_window.update_snippets(self.engine.list_snippets())
+        self.gui_window.show()
+
+    def _on_tray_exit(self, icon=None, item=None) -> None:
+        """Exit callback from tray icon menu."""
+        _ = icon, item
+        if self.gui_window:
+            self.gui_window.root.after(0, self.quit)
+
     def _on_window_hidden(self) -> None:
         """Callback when search window is hidden."""
-        pass  # Window is just hidden, not destroyed
+        # Tray icon remains visible independently of window visibility.
+        return
 
     def start(self) -> None:
         """Start the application (register hotkey and start GUI mainloop)."""
@@ -69,6 +124,13 @@ class QuickTypeApp:
         """Stop the application."""
         self.is_running = False
         self.hotkey_manager.unregister()
+        tray_icon = getattr(self, "tray_icon", None)
+        if tray_icon:
+            try:
+                tray_icon.stop()
+            except Exception:
+                pass
+            self.tray_icon = None
         if self.gui_window:
             try:
                 self.gui_window.destroy()

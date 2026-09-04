@@ -69,3 +69,26 @@ def test_hotkey_refocuses_when_window_visible_but_not_focused():
     assert app.gui_window.shown is False
     assert app.gui_window.brought_to_front is True
     assert app.gui_window.updated_with is None
+
+
+def test_tray_show_displays_hidden_window():
+    app = object.__new__(QuickTypeApp)
+    app.gui_window = _FakeGui(visible=False, foreground=False)
+    app.engine = _FakeEngine()
+
+    app._on_tray_show()
+
+    assert app.gui_window.scheduled == [0]
+    assert app.gui_window.shown is True
+    assert app.gui_window.updated_with == ["a", "b"]
+
+
+def test_tray_show_refocuses_visible_window():
+    app = object.__new__(QuickTypeApp)
+    app.gui_window = _FakeGui(visible=True, foreground=False)
+    app.engine = _FakeEngine()
+
+    app._on_tray_show()
+
+    assert app.gui_window.scheduled == [0]
+    assert app.gui_window.brought_to_front is True

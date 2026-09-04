@@ -191,14 +191,9 @@ class TextInserter:
     def paste(text: str) -> None:
         """Paste text from clipboard into the active app."""
         import keyboard as kb
-        import tkinter as tk
+        import pyperclip
 
-        clipboard_root = tk.Tk()
-        clipboard_root.withdraw()
-        clipboard_root.clipboard_clear()
-        clipboard_root.clipboard_append(text)
-        clipboard_root.update()
-        clipboard_root.destroy()
+        pyperclip.copy(text)
 
         kb.press_and_release("ctrl+v")
 

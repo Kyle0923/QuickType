@@ -6,6 +6,7 @@ from typing import Callable, List, Optional
 
 from .SnippetManager import Snippet
 from .core import FuzzyMatcher
+from .icons import create_app_icon_image
 
 
 class SnippetSearchWindow:
@@ -43,11 +44,24 @@ class SnippetSearchWindow:
         self.root.geometry("640x760")
         self.root.minsize(620, 700)
         self.root.attributes("-topmost", True)  # Keep window on top
+        self._set_titlebar_icon()
 
         # Handle window close - hide instead of destroy
         self.root.protocol("WM_DELETE_WINDOW", self._hide_window)
 
         self._setup_ui()
+
+    def _set_titlebar_icon(self) -> None:
+        """Apply the shared app icon to the native window title bar."""
+        try:
+            from PIL import ImageTk
+
+            image = create_app_icon_image(size=64)
+            self._titlebar_icon = ImageTk.PhotoImage(image)
+            self.root.iconphoto(True, self._titlebar_icon)
+        except Exception:
+            # Keep startup resilient if icon rendering is unavailable.
+            pass
 
     def _setup_ui(self) -> None:
         """Set up the user interface."""
@@ -187,11 +201,15 @@ class SnippetSearchWindow:
         """Update the listbox with snippets."""
         self.snippet_listbox.delete(0, tk.END)
         for snippet in snippets:
+            display_name = snippet.name
+            if snippet.description:
+                display_name = f"{snippet.name} - {snippet.description}"
+
             # Truncate long names for display
             display_text = (
-                snippet.name
-                if len(snippet.name) < 50
-                else snippet.name[:47] + "..."
+                display_name
+                if len(display_name) < 50
+                else display_name[:47] + "..."
             )
             self.snippet_listbox.insert(tk.END, display_text)
 
@@ -309,6 +327,7 @@ class SnippetSearchWindow:
         """Hide the window (minimize to tray)."""
         try:
             self.root.withdraw()
+            self.on_close()
         except Exception:
             pass
 
