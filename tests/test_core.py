@@ -141,6 +141,30 @@ def test_search_window_get_final_text_trims_tk_trailing_newline():
     assert window._get_final_text() == "line1\nline2"
 
 
+def test_search_window_extract_placeholders_returns_unique_names_in_order():
+    window = object.__new__(SnippetSearchWindow)
+
+    placeholders = window._extract_placeholders(
+        "echo {{name}} and {{ value_1 }} then {{name}} and {{path.to-file}}"
+    )
+
+    assert placeholders == ["name", "value_1", "path.to-file"]
+
+
+def test_search_window_replace_with_current_variables_keeps_unset_tokens():
+    window = object.__new__(SnippetSearchWindow)
+    window._variable_values = {
+        "name": "Alice",
+        "empty": "",
+    }
+
+    result = window._replace_with_current_variables(
+        "User={{name}} Missing={{missing}} Empty={{empty}}"
+    )
+
+    assert result == "User=Alice Missing={{missing}} Empty={{empty}}"
+
+
 def test_search_window_insert_hides_before_deferred_insert_callback():
     window = object.__new__(SnippetSearchWindow)
     window.selected_index = 0

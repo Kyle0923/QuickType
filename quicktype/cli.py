@@ -4,10 +4,9 @@ import sys
 from typing import List, Optional
 
 from .app import QuickTypeApp
+from .config import DEFAULT_HOTKEY
 from .core import SnippetEngine
 from .SnippetManager import SnippetManager
-
-DEFAULT_HOTKEY = "alt+`"
 
 def main(args: Optional[List[str]] = None) -> int:
     """

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+import subprocess
+from typing import List, Optional, Tuple
 
-from .SnippetManager import SnippetManager
+from .SnippetManager import Snippet, SnippetManager
 from .core import SnippetEngine, TextInserter
 from .gui import SnippetSearchWindow
 from .hotkey import HotkeyManager
@@ -44,6 +45,9 @@ class QuickTypeApp:
             hotkey=self.hotkey_manager.hotkey,
             on_hotkey_change=self.update_hotkey,
             on_exit=self.quit,
+            hierarchy_rows_provider=self._get_hierarchy_rows,
+            on_hierarchy_toggle=self._set_subtree_enabled,
+            on_hierarchy_open=self._open_hierarchy_document,
         )
         # Hide window initially (will show on hotkey)
         self.gui_window.root.withdraw()
@@ -188,6 +192,37 @@ class QuickTypeApp:
                 TextInserter.paste(final_text)
         except Exception as e:
             print(f"Error inserting snippet: {e}")
+
+    def _get_hierarchy_rows(self) -> List[Tuple[str, Optional[str], bool]]:
+        """Return hierarchy rows as (node_name, parent_name, enabled) tuples."""
+        rows: List[Tuple[str, Optional[str], bool]] = []
+        hierarchy_manager = self.manager.hierarchy_manager
+
+        def visit(node, parent_name: Optional[str]) -> None:
+            if node.name != "root":
+                rows.append((node.name, parent_name, hierarchy_manager.is_node_active(node.name)))
+
+            next_parent = None if node.name == "root" else node.name
+            for child in node.children:
+                visit(child, next_parent)
+
+        visit(hierarchy_manager.tree.root, None)
+        return rows
+
+    def _set_subtree_enabled(self, node_name: str, enabled: bool) -> List[Snippet]:
+        """Set subtree enabled state and return updated active snippet list."""
+        self.manager.set_subtree_enabled(node_name, enabled)
+        return self.engine.list_snippets()
+
+    def _open_hierarchy_document(self, node_name: str) -> None:
+        """Open the mapped hierarchy markdown file in VS Code."""
+        md_path = self.manager.data_dir / f"{node_name}.md"
+        try:
+            if not md_path.exists():
+                md_path.touch()
+            subprocess.Popen(["code", "-r", str(md_path)])
+        except Exception as e:
+            print(f"Error opening hierarchy document: {e}")
 
     def add_snippet(
         self,

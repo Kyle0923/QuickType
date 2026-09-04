@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple
 
+from .config import DEFAULT_HIERARCHY_ROOT_FILE
+
 
 class HierarchyFormatError(ValueError):
     """Raised when root.yaml has invalid structure or references."""
@@ -56,8 +58,6 @@ class DocumentTree:
 
 class HierarchyManager:
     """Parse root.yaml and manage runtime subtree filtering state."""
-
-    ROOT_FILE = "root.yaml"
 
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
@@ -168,7 +168,7 @@ class HierarchyManager:
     @classmethod
     def compose(cls, data_dir: Path) -> DocumentTree:
         """Parse and validate root.yaml from a data directory."""
-        root_file = data_dir / cls.ROOT_FILE
+        root_file = data_dir / DEFAULT_HIERARCHY_ROOT_FILE
         if not root_file.exists():
             raise HierarchyFormatError(f"Missing hierarchy file: {root_file}")
 

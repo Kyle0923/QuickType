@@ -2,12 +2,13 @@
 
 from pathlib import Path
 import pytest
-from quicktype.SnippetManager import parse_data_directory, parse_markdown_file, FormatError
+from quicktype.config import DEFAULT_DATA_DIR
+from quicktype.SnippetManager import FormatError, parse_data_directory, parse_markdown_file
 
 
 def test_parser_excludes_blockquotes():
     """Verify blockquotes are excluded from searchable text."""
-    data_dir = Path(__file__).parent.parent / '.data'
+    data_dir = DEFAULT_DATA_DIR
     sections = parse_data_directory(data_dir)
 
     # Test bugcheck section
@@ -29,7 +30,7 @@ def test_parser_excludes_blockquotes():
 
 def test_parser_extracts_all_sections():
     """Verify all sections are extracted."""
-    data_dir = Path(__file__).parent.parent / '.data'
+    data_dir = DEFAULT_DATA_DIR
     sections = parse_data_directory(data_dir)
 
     windbg_sections = sections.get('windbg', [])
@@ -45,7 +46,7 @@ def test_parser_extracts_all_sections():
 
 def test_parser_preserves_placeholders():
     """Verify placeholders are preserved in content."""
-    data_dir = Path(__file__).parent.parent / '.data'
+    data_dir = DEFAULT_DATA_DIR
     sections = parse_data_directory(data_dir)
 
     tcp_section = [s for s in sections.get('windbg', [])

@@ -6,17 +6,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .config import DEFAULT_DATA_DIR
 from .hierarchy import HierarchyManager
-
-
-def get_default_snippets_path() -> Path:
-    """Return the default repo-relative snippets directory."""
-    return Path(__file__).resolve().parent.parent / ".data"
-
-
-def get_data_dir() -> Path:
-    """Backward-compatible alias for the default snippets directory."""
-    return get_default_snippets_path()
 
 
 class FormatError(Exception):
@@ -176,10 +167,8 @@ def parse_data_directory(data_dir: Path) -> Dict[str, List[Snippet]]:
 class SnippetManager:
     """Manage loading, saving, and querying snippets."""
 
-    DEFAULT_DATA_DIR = get_default_snippets_path()
-
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = Path(data_dir) if data_dir is not None else self.DEFAULT_DATA_DIR
+        self.data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.hierarchy_manager = HierarchyManager(self.data_dir)
         self._all_snippets_by_source: Dict[str, List[Snippet]] = {}
@@ -291,8 +280,6 @@ __all__ = [
     "SnippetManager",
     "extract_code_block",
     "extract_quote_block",
-    "get_data_dir",
-    "get_default_snippets_path",
     "parse_data_directory",
     "parse_markdown_file",
 ]
