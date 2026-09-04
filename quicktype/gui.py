@@ -38,6 +38,7 @@ class SnippetSearchWindow:
         self.on_hotkey_change = on_hotkey_change
         self.on_exit = on_exit
         self.fuzzy_matcher = FuzzyMatcher(threshold=60)
+        self._final_original_text = ""
 
         self.root = tk.Tk()
         self.root.title("QuickType Search")
@@ -99,8 +100,14 @@ class SnippetSearchWindow:
         scrollbar = ttk.Scrollbar(list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        list_x_scrollbar = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL)
+        list_x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
         self.snippet_listbox = tk.Listbox(
-            list_frame, yscrollcommand=scrollbar.set, height=15
+            list_frame,
+            yscrollcommand=scrollbar.set,
+            xscrollcommand=list_x_scrollbar.set,
+            height=15,
         )
         self.snippet_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.snippet_listbox.bind("<<ListboxSelect>>", self._on_list_select)
@@ -109,27 +116,80 @@ class SnippetSearchWindow:
         self.snippet_listbox.bind("<Alt-Return>", self._on_alt_enter)
         self.snippet_listbox.bind("<Alt-KP_Enter>", self._on_alt_enter)
         scrollbar.config(command=self.snippet_listbox.yview)
+        list_x_scrollbar.config(command=self.snippet_listbox.xview)
 
         # Content preview
         preview_frame = ttk.LabelFrame(self.root, text="Preview")
         preview_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
-        self.preview_text = tk.Text(preview_frame, height=6, width=50, wrap=tk.WORD)
+        preview_y_scrollbar = ttk.Scrollbar(preview_frame)
+        preview_y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        preview_x_scrollbar = ttk.Scrollbar(preview_frame, orient=tk.HORIZONTAL)
+        preview_x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.preview_text = tk.Text(
+            preview_frame,
+            height=6,
+            width=50,
+            wrap=tk.NONE,
+            xscrollcommand=preview_x_scrollbar.set,
+            yscrollcommand=preview_y_scrollbar.set,
+        )
         self.preview_text.pack(fill=tk.BOTH, expand=True)
+        preview_x_scrollbar.config(command=self.preview_text.xview)
+        preview_y_scrollbar.config(command=self.preview_text.yview)
         self.preview_text.config(state=tk.DISABLED)
 
         # Editable final payload (allows replacing placeholders like {{variable}})
-        final_frame = ttk.LabelFrame(self.root, text="Final")
+        final_frame = ttk.Frame(self.root)
         final_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
-        self.final_text = tk.Text(final_frame, height=6, width=50, wrap=tk.WORD)
+        final_header = ttk.Frame(final_frame)
+        final_header.pack(fill=tk.X)
+
+        ttk.Label(final_header, text="Final").pack(side=tk.LEFT)
+        tk.Button(
+            final_header,
+            text="Reset",
+            width=6,
+            fg="#000000",
+            activeforeground="#666666",
+            activebackground="#E0E0E0",
+            font=("Segoe UI", 9, "bold"),
+            relief=tk.RIDGE,
+            bd=1,
+            padx=2,
+            pady=1,
+            cursor="hand2",
+            command=self._reset_final_text,
+        ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
+
+        final_y_scrollbar = ttk.Scrollbar(final_frame)
+        final_y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        final_x_scrollbar = ttk.Scrollbar(final_frame, orient=tk.HORIZONTAL)
+        final_x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.final_text = tk.Text(
+            final_frame,
+            height=6,
+            width=50,
+            wrap=tk.NONE,
+            undo=True,
+            xscrollcommand=final_x_scrollbar.set,
+            yscrollcommand=final_y_scrollbar.set,
+        )
         self.final_text.pack(fill=tk.BOTH, expand=True)
+        final_x_scrollbar.config(command=self.final_text.xview)
+        final_y_scrollbar.config(command=self.final_text.yview)
         self.final_text.bind("<Return>", self._on_enter)
         self.final_text.bind("<KP_Enter>", self._on_enter)
         self.final_text.bind("<Alt-Return>", self._on_alt_enter)
         self.final_text.bind("<Alt-KP_Enter>", self._on_alt_enter)
         self.final_text.bind("<Shift-Return>", lambda event: None)
         self.final_text.bind("<Shift-KP_Enter>", lambda event: None)
+        self.final_text.bind("<Tab>", lambda e: e.widget.tk_focusNext().focus_set() or "break")
 
         # Buttons
         button_frame = ttk.Frame(self.root)
@@ -204,14 +264,7 @@ class SnippetSearchWindow:
             display_name = snippet.name
             if snippet.description:
                 display_name = f"{snippet.name} - {snippet.description}"
-
-            # Truncate long names for display
-            display_text = (
-                display_name
-                if len(display_name) < 50
-                else display_name[:47] + "..."
-            )
-            self.snippet_listbox.insert(tk.END, display_text)
+            self.snippet_listbox.insert(tk.END, display_name)
 
         if snippets:
             self.snippet_listbox.selection_set(0)
@@ -295,8 +348,14 @@ class SnippetSearchWindow:
         self.preview_text.insert(tk.END, snippet.payload)
         self.preview_text.config(state=tk.DISABLED)
 
+        self._final_original_text = snippet.payload
         self.final_text.delete(1.0, tk.END)
-        self.final_text.insert(tk.END, snippet.payload)
+        self.final_text.insert(tk.END, self._final_original_text)
+
+    def _reset_final_text(self) -> None:
+        """Restore the editable final text to the last selected snippet payload."""
+        self.final_text.delete(1.0, tk.END)
+        self.final_text.insert(tk.END, self._final_original_text)
 
     def _get_final_text(self) -> str:
         """Return editable final payload text without the trailing Tk newline."""
