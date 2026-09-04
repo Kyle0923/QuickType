@@ -2,6 +2,7 @@ from quicktype.SnippetManager import Snippet
 from quicktype.core import FuzzyMatcher
 from quicktype.gui import SnippetSearchWindow
 from quicktype.hotkey import HotkeyManager
+import sys
 
 
 def test_fuzzy_matcher_handles_fzf_style_subsequence_queries():
@@ -125,6 +126,146 @@ def test_search_window_escape_hides_window():
 
     assert result == "break"
     assert called["hidden"] is True
+
+
+def test_search_window_get_final_text_trims_tk_trailing_newline():
+    window = object.__new__(SnippetSearchWindow)
+
+    class FakeFinalText:
+        def get(self, start, end):
+            _ = (start, end)
+            return "line1\nline2\n"
+
+    window.final_text = FakeFinalText()
+
+    assert window._get_final_text() == "line1\nline2"
+
+
+def test_search_window_insert_hides_before_deferred_insert_callback():
+    window = object.__new__(SnippetSearchWindow)
+    window.selected_index = 0
+    window.filtered_snippets = [Snippet(name="demo", payload="x")]
+
+    order = []
+
+    class FakeRoot:
+        def after(self, delay_ms, callback):
+            order.append(f"after:{delay_ms}")
+            callback()
+
+    window.root = FakeRoot()
+    window._get_final_text = lambda: "final value"
+
+    def fake_hide() -> None:
+        order.append("hide")
+
+    def fake_on_select(text: str, mode: str) -> None:
+        order.append(f"select:{text}:{mode}")
+
+    window._hide_window = fake_hide
+    window.on_select = fake_on_select
+
+    window._insert_selected()
+
+    assert order == ["hide", "after:80", "select:final value:paste"]
+
+
+def test_search_window_enter_handler_triggers_insert_and_breaks_event():
+    window = object.__new__(SnippetSearchWindow)
+    called = {"mode": ""}
+
+    def fake_insert(mode="paste") -> None:
+        called["mode"] = mode
+
+    window._insert_selected = fake_insert
+
+    result = window._on_enter(None)
+
+    assert result == "break"
+    assert called["mode"] == "paste"
+
+
+def test_search_window_alt_enter_handler_uses_type_mode():
+    window = object.__new__(SnippetSearchWindow)
+    called = {"mode": ""}
+
+    def fake_insert(mode="paste") -> None:
+        called["mode"] = mode
+
+    window._insert_selected = fake_insert
+
+    result = window._on_alt_enter(None)
+
+    assert result == "break"
+    assert called["mode"] == "type"
+
+
+def test_snippet_engine_insert_text_uses_insert_callback():
+    from quicktype.core import SnippetEngine
+
+    captured = {"text": ""}
+
+    def fake_insert(value: str) -> None:
+        captured["text"] = value
+
+    engine = SnippetEngine(manager=object())
+    engine.set_insert_callback(fake_insert)
+    engine.insert_text("edited payload")
+
+    assert captured["text"] == "edited payload"
+
+
+def test_text_inserter_uses_keyboard_delay_argument(monkeypatch):
+    from quicktype.core import TextInserter
+
+    captured = {"text": None, "kwargs": None}
+
+    class FakeKeyboard:
+        @staticmethod
+        def write(text, **kwargs):
+            captured["text"] = text
+            captured["kwargs"] = kwargs
+
+    monkeypatch.setitem(sys.modules, "keyboard", FakeKeyboard)
+
+    TextInserter.insert("hello")
+
+    assert captured["text"] == "hello"
+    assert captured["kwargs"] == {"delay": 0.05}
+
+
+def test_text_inserter_paste_uses_ctrl_v(monkeypatch):
+    from quicktype.core import TextInserter
+
+    pressed = {"keys": None}
+
+    class FakeKeyboard:
+        @staticmethod
+        def press_and_release(keys):
+            pressed["keys"] = keys
+
+    class FakeTk:
+        def withdraw(self):
+            return None
+
+        def clipboard_clear(self):
+            return None
+
+        def clipboard_append(self, value):
+            self.value = value
+
+        def update(self):
+            return None
+
+        def destroy(self):
+            return None
+
+    monkeypatch.setitem(sys.modules, "keyboard", FakeKeyboard)
+    monkeypatch.setattr("tkinter.Tk", lambda: FakeTk())
+
+    TextInserter.paste("hello")
+
+    assert pressed["keys"] == "ctrl+v"
 
 
 def test_hotkey_manager_can_update_hotkey_binding():

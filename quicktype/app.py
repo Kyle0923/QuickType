@@ -82,20 +82,31 @@ class QuickTypeApp:
         raise SystemExit(0)
 
     def _on_hotkey_pressed(self) -> None:
-        """Callback when hotkey is pressed - toggle search window visibility."""
+        """Callback when hotkey is pressed from the global listener thread."""
         if not self.gui_window:
             return
 
         try:
-            if self.gui_window.is_visible():
-                self.gui_window.hide()
-                return
-
-            # Update snippets list before showing.
-            self.gui_window.update_snippets(self.engine.list_snippets())
-            self.gui_window.show()
+            # Marshal UI work onto the Tk mainloop thread for stable focus behavior.
+            self.gui_window.root.after(0, self._handle_hotkey_on_ui_thread)
         except Exception as e:
             print(f"Error showing search window: {e}")
+
+    def _handle_hotkey_on_ui_thread(self) -> None:
+        """Toggle window visibility from the Tk UI thread."""
+        if not self.gui_window:
+            return
+
+        if self.gui_window.is_visible():
+            if self.gui_window.is_foreground():
+                self.gui_window.hide()
+            else:
+                self.gui_window.bring_to_front()
+            return
+
+        # Update snippets list before showing.
+        self.gui_window.update_snippets(self.engine.list_snippets())
+        self.gui_window.show()
 
     def update_hotkey(self, hotkey: str) -> None:
         """Update the global hotkey binding from the Settings menu."""
@@ -106,10 +117,13 @@ class QuickTypeApp:
         except Exception as e:
             print(f"Error updating hotkey: {e}")
 
-    def _on_snippet_selected(self, snippet_name: str) -> None:
-        """Callback when a snippet is selected - insert its content."""
+    def _on_snippet_selected(self, final_text: str, mode: str) -> None:
+        """Callback when a snippet is selected - insert edited final content."""
         try:
-            self.engine.insert_snippet(snippet_name)
+            if mode == "type":
+                TextInserter.insert(final_text)
+            else:
+                TextInserter.paste(final_text)
         except Exception as e:
             print(f"Error inserting snippet: {e}")
 

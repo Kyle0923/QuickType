@@ -13,7 +13,7 @@ class SnippetSearchWindow:
 
     def __init__(
         self,
-        on_select: Callable[[str], None],
+        on_select: Callable[[str, str], None],
         on_close: Callable[[], None],
         snippets: Optional[List[Snippet]] = None,
         hotkey: str = "ctrl+shift+space",
@@ -40,7 +40,8 @@ class SnippetSearchWindow:
 
         self.root = tk.Tk()
         self.root.title("QuickType Search")
-        self.root.geometry("500x400")
+        self.root.geometry("640x760")
+        self.root.minsize(620, 700)
         self.root.attributes("-topmost", True)  # Keep window on top
 
         # Handle window close - hide instead of destroy
@@ -64,6 +65,10 @@ class SnippetSearchWindow:
         self.search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         self.search_entry.bind("<Up>", self._on_arrow_key)
         self.search_entry.bind("<Down>", self._on_arrow_key)
+        self.search_entry.bind("<Return>", self._on_enter)
+        self.search_entry.bind("<KP_Enter>", self._on_enter)
+        self.search_entry.bind("<Alt-Return>", self._on_alt_enter)
+        self.search_entry.bind("<Alt-KP_Enter>", self._on_alt_enter)
         self.search_entry.bind("<Control-w>", self._on_ctrl_w)
         self.search_entry.bind("<Control-d>", self._on_ctrl_d)
         self.root.bind("<Escape>", self._on_escape)
@@ -85,7 +90,10 @@ class SnippetSearchWindow:
         )
         self.snippet_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.snippet_listbox.bind("<<ListboxSelect>>", self._on_list_select)
-        self.snippet_listbox.bind("<Return>", self._on_snippet_insert)
+        self.snippet_listbox.bind("<Return>", self._on_enter)
+        self.snippet_listbox.bind("<KP_Enter>", self._on_enter)
+        self.snippet_listbox.bind("<Alt-Return>", self._on_alt_enter)
+        self.snippet_listbox.bind("<Alt-KP_Enter>", self._on_alt_enter)
         scrollbar.config(command=self.snippet_listbox.yview)
 
         # Content preview
@@ -96,16 +104,22 @@ class SnippetSearchWindow:
         self.preview_text.pack(fill=tk.BOTH, expand=True)
         self.preview_text.config(state=tk.DISABLED)
 
+        # Editable final payload (allows replacing placeholders like {{variable}})
+        final_frame = ttk.LabelFrame(self.root, text="Final")
+        final_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        self.final_text = tk.Text(final_frame, height=6, width=50, wrap=tk.WORD)
+        self.final_text.pack(fill=tk.BOTH, expand=True)
+        self.final_text.bind("<Return>", self._on_enter)
+        self.final_text.bind("<KP_Enter>", self._on_enter)
+        self.final_text.bind("<Alt-Return>", self._on_alt_enter)
+        self.final_text.bind("<Alt-KP_Enter>", self._on_alt_enter)
+        self.final_text.bind("<Shift-Return>", lambda event: None)
+        self.final_text.bind("<Shift-KP_Enter>", lambda event: None)
+
         # Buttons
         button_frame = ttk.Frame(self.root)
         button_frame.pack(pady=10)
-
-        ttk.Button(button_frame, text="Insert", command=self._insert_selected).pack(
-            side=tk.LEFT, padx=5
-        )
-        ttk.Button(button_frame, text="Close", command=self._hide_window).pack(
-            side=tk.LEFT, padx=5
-        )
 
         # Update list with all snippets
         self._update_snippet_list(self.snippets)
@@ -263,16 +277,33 @@ class SnippetSearchWindow:
         self.preview_text.insert(tk.END, snippet.payload)
         self.preview_text.config(state=tk.DISABLED)
 
+        self.final_text.delete(1.0, tk.END)
+        self.final_text.insert(tk.END, snippet.payload)
+
+    def _get_final_text(self) -> str:
+        """Return editable final payload text without the trailing Tk newline."""
+        return self.final_text.get("1.0", tk.END).rstrip("\n")
+
     def _on_snippet_insert(self, event: tk.Event) -> None:
         """Handle Return key to insert selected snippet."""
         self._insert_selected()
 
-    def _insert_selected(self) -> None:
+    def _on_enter(self, event: tk.Event) -> str:
+        """Insert using paste mode."""
+        self._insert_selected(mode="paste")
+        return "break"
+
+    def _on_alt_enter(self, event: tk.Event) -> str:
+        """Insert using keyboard typing mode."""
+        self._insert_selected(mode="type")
+        return "break"
+
+    def _insert_selected(self, mode: str = "paste") -> None:
         """Insert the selected snippet."""
         if self.selected_index < len(self.filtered_snippets):
-            snippet = self.filtered_snippets[self.selected_index]
-            self.on_select(snippet.name)
+            final_text = self._get_final_text()
             self._hide_window()
+            self.root.after(80, lambda: self.on_select(final_text, mode))
 
     def _hide_window(self) -> None:
         """Hide the window (minimize to tray)."""
@@ -292,6 +323,16 @@ class SnippetSearchWindow:
         except Exception:
             return False
 
+    def is_foreground(self) -> bool:
+        """Return True when this window currently owns focus."""
+        try:
+            focused_widget = self.root.focus_displayof()
+            if focused_widget is None:
+                return False
+            return focused_widget.winfo_toplevel() == self.root
+        except Exception:
+            return False
+
     def show(self) -> None:
         """Display the window (show hidden window, don't create new mainloop)."""
         try:
@@ -300,14 +341,28 @@ class SnippetSearchWindow:
             self._update_snippet_list(self.snippets)
 
             self._center_window()
-
-            # Show and focus window
-            self.root.deiconify()
-            self.root.lift()
-            self.root.attributes("-topmost", True)
-            self.root.after(50, self._focus_search_entry)
+            self._raise_and_focus()
         except Exception as e:
             print(f"Error showing window: {e}")
+
+    def bring_to_front(self) -> None:
+        """Bring a visible-but-unfocused window back to the foreground."""
+        try:
+            # Mimic manual hide/show behavior that reliably restores focus.
+            self.root.withdraw()
+            self.root.after(10, self._raise_and_focus)
+        except Exception as e:
+            print(f"Error focusing window: {e}")
+
+    def _raise_and_focus(self) -> None:
+        """Raise, deiconify and focus the window."""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.focus_force()
+        # Delay refocus to give the OS time to settle foreground ownership.
+        self.root.after(120, self._focus_search_entry)
+        self.root.after(220, self._focus_search_entry)
 
     def _center_window(self) -> None:
         """Center the window on the active screen."""
@@ -331,7 +386,7 @@ class SnippetSearchWindow:
     def _focus_search_entry(self) -> None:
         """Focus and place the cursor in the search entry."""
         if hasattr(self, "search_entry"):
-            self.search_entry.focus_set()
+            self.search_entry.focus_force()
             self.search_entry.icursor(tk.END)
             self.root.update_idletasks()
 

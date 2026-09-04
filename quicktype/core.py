@@ -114,6 +114,12 @@ class SnippetEngine:
         self.insert_callback(snippet.payload)
         return True
 
+    def insert_text(self, text: str) -> None:
+        """Insert arbitrary text via the registered callback."""
+        if not self.insert_callback:
+            raise RuntimeError("Insert callback not set. Use set_insert_callback().")
+        self.insert_callback(text)
+
     def add_snippet(
         self,
         name: str,
@@ -179,4 +185,20 @@ class TextInserter:
         # Use keyboard library for cross-platform text insertion
         import keyboard as kb
 
-        kb.write(text, interval=0.05)
+        kb.write(text, delay=0.05)
+
+    @staticmethod
+    def paste(text: str) -> None:
+        """Paste text from clipboard into the active app."""
+        import keyboard as kb
+        import tkinter as tk
+
+        clipboard_root = tk.Tk()
+        clipboard_root.withdraw()
+        clipboard_root.clipboard_clear()
+        clipboard_root.clipboard_append(text)
+        clipboard_root.update()
+        clipboard_root.destroy()
+
+        kb.press_and_release("ctrl+v")
+
