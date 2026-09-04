@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from .hierarchy import HierarchyManager
 
 
 def get_default_snippets_path() -> Path:
@@ -180,65 +181,99 @@ class SnippetManager:
     def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = Path(data_dir) if data_dir is not None else self.DEFAULT_DATA_DIR
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.hierarchy_manager = HierarchyManager(self.data_dir)
+        self._all_snippets_by_source: Dict[str, List[Snippet]] = {}
         self.snippets: Dict[str, Snippet] = {}
         self._load()
 
     def _load(self) -> None:
-        snippets_by_file = parse_data_directory(self.data_dir)
+        self._all_snippets_by_source = parse_data_directory(self.data_dir)
+        self._recompose_active_pool()
 
-        for snippets in snippets_by_file.values():
-            for snippet in snippets:
+    def _recompose_active_pool(self) -> None:
+        """Rebuild active snippets from loaded markdown data and hierarchy state."""
+        self.snippets = {}
+        for source_name in self.active_source_names():
+            for snippet in self._all_snippets_by_source.get(source_name, []):
                 self.snippets[snippet.name] = snippet
 
-        if self.snippets:
-            return
+    def active_source_names(self) -> List[str]:
+        """Return active source names based on enabled hierarchy subtrees."""
+        return self.hierarchy_manager.get_active_document_names()
 
-        storage_path = self.data_dir / "snippets.json"
-        if not storage_path.exists():
-            return
+    def list_all_snippets(self) -> List[Snippet]:
+        """Return every loaded snippet regardless of current subtree filters."""
+        all_snippets: List[Snippet] = []
+        for snippets in self._all_snippets_by_source.values():
+            all_snippets.extend(snippets)
+        return all_snippets
 
-        try:
-            with storage_path.open(encoding="utf-8") as handle:
-                data = json.load(handle)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Invalid snippets file: {exc}") from exc
+    def disable_subtree(self, node_name: str) -> None:
+        """Disable a hierarchy subtree and recompose the active snippet pool."""
+        self.hierarchy_manager.disable_subtree(node_name)
+        self._recompose_active_pool()
 
-        if isinstance(data, dict):
-            for key, value in data.items():
-                if isinstance(value, list):
-                    for entry in value:
-                        snippet = Snippet.from_dict(entry)
-                        if snippet.name:
-                            if not snippet.source:
-                                snippet.source = key
-                            self.snippets[snippet.name] = snippet
-                elif isinstance(value, dict):
-                    snippet = Snippet.from_dict(value)
-                    if snippet.name:
-                        self.snippets[snippet.name] = snippet
+    def enable_subtree(self, node_name: str) -> None:
+        """Enable a hierarchy subtree and recompose the active snippet pool."""
+        self.hierarchy_manager.enable_subtree(node_name)
+        self._recompose_active_pool()
 
-    def save(self) -> None:
-        """Write a JSON backup for compatibility with existing CLI flow."""
-        storage_path = self.data_dir / "snippets.json"
-        payload: Dict[str, List[Dict[str, Any]]] = {}
+    def enable_all_subtrees(self) -> None:
+        """Enable all hierarchy subtrees and recompose the active snippet pool."""
+        self.hierarchy_manager.enable_all()
+        self._recompose_active_pool()
 
-        for snippet in self.snippets.values():
-            file_key = Path(snippet.source).stem if snippet.source else "snippets"
-            payload.setdefault(file_key, []).append(snippet.to_dict())
+    def set_subtree_enabled(self, node_name: str, enabled: bool) -> None:
+        """Set subtree state in one call for checkbox-driven UIs."""
+        if enabled:
+            self.enable_subtree(node_name)
+        else:
+            self.disable_subtree(node_name)
 
-        with storage_path.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2)
+    def add_snippet(
+        self,
+        name: str,
+        description: Optional[str],
+        payload: str,
+        source: str,
+    ) -> Snippet:
+        """Append a snippet section to {source}.md and refresh in-memory pools."""
+        source_name = source.strip()
+        if not source_name:
+            raise ValueError("source must not be empty")
 
-    def add_snippet(self, snippet: Snippet) -> None:
-        self.snippets[snippet.name] = snippet
-        self.save()
+        snippet = Snippet(
+            name=name.strip(),
+            description=description.strip() if description else None,
+            payload=payload,
+            source=source_name,
+        )
+        if not snippet.name:
+            raise ValueError("name must not be empty")
 
-    def remove_snippet(self, name: str) -> bool:
-        if name not in self.snippets:
-            return False
-        del self.snippets[name]
-        self.save()
-        return True
+        md_path = self.data_dir / f"{source_name}.md"
+        block = self._format_markdown_snippet(snippet)
+        needs_separator = md_path.exists() and md_path.read_text(encoding="utf-8").strip() != ""
+
+        with md_path.open("a", encoding="utf-8") as handle:
+            if needs_separator:
+                handle.write("\n")
+            handle.write(block)
+
+        self._all_snippets_by_source.setdefault(source_name, []).append(snippet)
+        self._recompose_active_pool()
+        return snippet
+
+    @staticmethod
+    def _format_markdown_snippet(snippet: Snippet) -> str:
+        """Format a snippet using the markdown parser rules."""
+        lines = [f"# {snippet.name}"]
+        if snippet.description:
+            lines.append(f"## {snippet.description}")
+        lines.append("```")
+        lines.extend(snippet.payload.splitlines() or [""])
+        lines.append("```")
+        return "\n".join(lines) + "\n"
 
     def get_snippet(self, name: str) -> Optional[Snippet]:
         return self.snippets.get(name)

@@ -65,6 +65,9 @@ class SnippetSearchWindow:
         self.search_entry.bind("<Up>", self._on_arrow_key)
         self.search_entry.bind("<Down>", self._on_arrow_key)
         self.search_entry.bind("<Control-w>", self._on_ctrl_w)
+        self.search_entry.bind("<Control-d>", self._on_ctrl_d)
+        self.root.bind("<Escape>", self._on_escape)
+        self.root.bind("<Control-d>", self._on_ctrl_d)
         self.search_entry.focus_set()
 
         # Snippet list
@@ -240,6 +243,17 @@ class SnippetSearchWindow:
         new_text = new_prefix + suffix
         self.search_var.set(new_text)
         self.search_entry.icursor(len(new_prefix))
+        return "break"
+
+    def _on_ctrl_d(self, event: tk.Event) -> str:
+        """Clear the search box and reset the snippet list."""
+        self.search_var.set("")
+        self.search_entry.icursor(0)
+        return "break"
+
+    def _on_escape(self, event: tk.Event) -> str:
+        """Hide the search window."""
+        self._hide_window()
         return "break"
 
     def _update_preview(self, snippet: Snippet) -> None:

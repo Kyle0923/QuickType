@@ -113,13 +113,25 @@ class QuickTypeApp:
         except Exception as e:
             print(f"Error inserting snippet: {e}")
 
-    def add_snippet(self, name: str, content: str) -> None:
+    def add_snippet(
+        self,
+        name: str,
+        payload: str,
+        source: str,
+        description: Optional[str] = None,
+    ) -> None:
         """Add a snippet to the manager."""
-        self.engine.add_snippet(name, content)
+        self.engine.add_snippet(
+            name=name,
+            payload=payload,
+            source=source,
+            description=description,
+        )
 
     def remove_snippet(self, name: str) -> bool:
-        """Remove a snippet from the manager."""
-        return self.engine.remove_snippet(name)
+        """Remove is currently not supported."""
+        _ = name
+        return False
 
     def list_snippets(self):
         """List all available snippets."""

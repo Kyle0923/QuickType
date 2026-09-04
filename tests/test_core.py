@@ -89,6 +89,44 @@ def test_search_window_ctrl_w_removes_only_last_word():
     assert window.search_entry.cursor == len("aa bb")
 
 
+def test_search_window_ctrl_d_clears_search_box():
+    window = object.__new__(SnippetSearchWindow)
+    window.search_var = type("SearchVar", (), {"get": lambda self: "hello", "set": lambda self, value: setattr(self, "value", value)})()
+    window.search_var.value = "hello"
+    window.search_var.get = lambda: window.search_var.value
+    window.search_var.set = lambda value: setattr(window.search_var, "value", value)
+
+    class FakeEntry:
+        def __init__(self):
+            self.cursor = len("hello")
+
+        def icursor(self, pos):
+            self.cursor = pos
+
+    window.search_entry = FakeEntry()
+
+    result = window._on_ctrl_d(None)
+
+    assert result == "break"
+    assert window.search_var.get() == ""
+    assert window.search_entry.cursor == 0
+
+
+def test_search_window_escape_hides_window():
+    window = object.__new__(SnippetSearchWindow)
+    called = {"hidden": False}
+
+    def fake_hide() -> None:
+        called["hidden"] = True
+
+    window._hide_window = fake_hide
+
+    result = window._on_escape(None)
+
+    assert result == "break"
+    assert called["hidden"] is True
+
+
 def test_hotkey_manager_can_update_hotkey_binding():
     manager = HotkeyManager("ctrl+shift+q")
 

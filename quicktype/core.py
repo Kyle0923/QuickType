@@ -114,16 +114,28 @@ class SnippetEngine:
         self.insert_callback(snippet.payload)
         return True
 
-    def add_snippet(self, name: str, content: str) -> None:
+    def add_snippet(
+        self,
+        name: str,
+        payload: str,
+        source: str,
+        description: Optional[str] = None,
+    ) -> None:
         """
         Add a new snippet.
 
         Args:
             name: Unique snippet name.
-            content: Text content to insert.
+            payload: Text content to insert.
+            source: Source markdown document name (without .md).
+            description: Optional short description (maps to markdown H2).
         """
-        snippet = Snippet(name=name, payload=content)
-        self.manager.add_snippet(snippet)
+        self.manager.add_snippet(
+            name=name,
+            description=description,
+            payload=payload,
+            source=source,
+        )
 
     def remove_snippet(self, name: str) -> bool:
         """
@@ -135,11 +147,8 @@ class SnippetEngine:
         Returns:
             True if successful, False if snippet not found.
         """
-        try:
-            self.manager.remove_snippet(name)
-            return True
-        except KeyError:
-            return False
+        _ = name
+        return False
 
     def list_snippets(self) -> List[Snippet]:
         """

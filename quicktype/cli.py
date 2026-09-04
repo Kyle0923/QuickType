@@ -30,30 +30,16 @@ def main(args: Optional[List[str]] = None) -> int:
 
     elif args[0] == "add":
         # Add a snippet without launching the app
-        if len(args) < 3:
-            print("Usage: quicktype add <name> <content>")
+        if len(args) < 4:
+            print("Usage: quicktype add <source> <name> <payload> [description]")
             return 1
-        name, content = args[1], args[2]
+        source, name, payload = args[1], args[2], args[3]
+        description = args[4] if len(args) > 4 else None
         manager = SnippetManager()
         engine = SnippetEngine(manager)
-        engine.add_snippet(name, content)
-        print(f"Added snippet: {name}")
+        engine.add_snippet(name=name, payload=payload, source=source, description=description)
+        print(f"Added snippet: {name} ({source})")
         return 0
-
-    elif args[0] == "remove":
-        # Remove a snippet
-        if len(args) < 2:
-            print("Usage: quicktype remove <name>")
-            return 1
-        name = args[1]
-        manager = SnippetManager()
-        engine = SnippetEngine(manager)
-        if engine.remove_snippet(name):
-            print(f"Removed snippet: {name}")
-            return 0
-        else:
-            print(f"Snippet not found: {name}")
-            return 1
 
     elif args[0] == "list":
         # List all snippets
@@ -70,7 +56,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
     else:
         print(f"Unknown command: {args[0]}")
-        print("Available commands: run, add, remove, list")
+        print("Available commands: run, add, list")
         return 1
 
 
