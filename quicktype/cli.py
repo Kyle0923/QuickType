@@ -5,8 +5,9 @@ from typing import List, Optional
 
 from .app import QuickTypeApp
 from .core import SnippetEngine
-from .config import SnippetManager
+from .SnippetManager import SnippetManager
 
+DEFAULT_HOTKEY = "alt+`"
 
 def main(args: Optional[List[str]] = None) -> int:
     """
@@ -23,7 +24,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
     if not args or args[0] == "run":
         # Launch the background app (default behavior)
-        app = QuickTypeApp(hotkey="ctrl+shift+space")
+        app = QuickTypeApp(hotkey=DEFAULT_HOTKEY)
         app.start()
         return 0
 
@@ -64,8 +65,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
         print("Available snippets:")
         for snippet in snippets:
-            tags_str = f" [{', '.join(snippet.tags)}]" if snippet.tags else ""
-            print(f"  - {snippet.name}{tags_str}")
+            print(f"  * {snippet.name}{' - ' + snippet.description if snippet.description else ''}")
         return 0
 
     else:

@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from .config import SnippetManager
+from .SnippetManager import SnippetManager
 from .core import SnippetEngine, TextInserter
 from .gui import SnippetSearchWindow
 from .hotkey import HotkeyManager
@@ -16,7 +16,7 @@ class QuickTypeApp:
         Initialize QuickTypeApp.
 
         Args:
-            hotkey: Global hotkey to trigger snippet search (default: Ctrl+Shift+Q).
+            hotkey: Global hotkey to trigger snippet search.
         """
         self.manager = SnippetManager()
         self.engine = SnippetEngine(self.manager)
@@ -51,7 +51,7 @@ class QuickTypeApp:
         """Start the application (register hotkey and start GUI mainloop)."""
         self.is_running = True
 
-        print("QuickType started. Press Ctrl+Shift+Q to activate.")
+        print(f"QuickType started. Press {self.hotkey_manager.hotkey} to activate.")
         print("Press Ctrl+C to exit.")
 
         # Register hotkey callback (non-blocking)
@@ -82,15 +82,17 @@ class QuickTypeApp:
         raise SystemExit(0)
 
     def _on_hotkey_pressed(self) -> None:
-        """Callback when hotkey is pressed - show search window."""
+        """Callback when hotkey is pressed - toggle search window visibility."""
         if not self.gui_window:
             return
 
         try:
-            # Update snippets list
-            self.gui_window.update_snippets(self.engine.list_snippets())
+            if self.gui_window.is_visible():
+                self.gui_window.hide()
+                return
 
-            # Show the hidden window (or bring to front if already visible)
+            # Update snippets list before showing.
+            self.gui_window.update_snippets(self.engine.list_snippets())
             self.gui_window.show()
         except Exception as e:
             print(f"Error showing search window: {e}")
@@ -111,9 +113,9 @@ class QuickTypeApp:
         except Exception as e:
             print(f"Error inserting snippet: {e}")
 
-    def add_snippet(self, name: str, content: str, tags: Optional[list] = None) -> None:
+    def add_snippet(self, name: str, content: str) -> None:
         """Add a snippet to the manager."""
-        self.engine.add_snippet(name, content, tags=tags)
+        self.engine.add_snippet(name, content)
 
     def remove_snippet(self, name: str) -> bool:
         """Remove a snippet from the manager."""

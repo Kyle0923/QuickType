@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, List, Optional
 
-from .config import Snippet
+from .SnippetManager import Snippet
 from .core import FuzzyMatcher
 
 
@@ -71,7 +71,7 @@ class SnippetSearchWindow:
         list_frame = ttk.Frame(self.root)
         list_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
-        ttk.Label(list_frame, text="Snippets:").pack(anchor=tk.W)
+        ttk.Label(list_frame, text="Notes:").pack(anchor=tk.W)
 
         # Listbox with scrollbar
         scrollbar = ttk.Scrollbar(list_frame)
@@ -246,7 +246,7 @@ class SnippetSearchWindow:
         """Update the content preview for a snippet."""
         self.preview_text.config(state=tk.NORMAL)
         self.preview_text.delete(1.0, tk.END)
-        self.preview_text.insert(tk.END, snippet.content)
+        self.preview_text.insert(tk.END, snippet.payload)
         self.preview_text.config(state=tk.DISABLED)
 
     def _on_snippet_insert(self, event: tk.Event) -> None:
@@ -267,6 +267,17 @@ class SnippetSearchWindow:
         except Exception:
             pass
 
+    def hide(self) -> None:
+        """Public wrapper to hide the window."""
+        self._hide_window()
+
+    def is_visible(self) -> bool:
+        """Return True when the window is currently visible."""
+        try:
+            return self.root.state() != "withdrawn"
+        except Exception:
+            return False
+
     def show(self) -> None:
         """Display the window (show hidden window, don't create new mainloop)."""
         try:
@@ -274,14 +285,34 @@ class SnippetSearchWindow:
             self.search_var.set("")
             self._update_snippet_list(self.snippets)
 
+            self._center_window()
+
             # Show and focus window
             self.root.deiconify()
             self.root.lift()
             self.root.attributes("-topmost", True)
             self.root.after(50, self._focus_search_entry)
-            self.root.attributes("-topmost", False)
         except Exception as e:
             print(f"Error showing window: {e}")
+
+    def _center_window(self) -> None:
+        """Center the window on the active screen."""
+        self.root.update_idletasks()
+
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+
+        # Fallback when the withdrawn window reports a minimal size.
+        if width <= 1 or height <= 1:
+            width = self.root.winfo_reqwidth()
+            height = self.root.winfo_reqheight()
+
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        x = max((screen_width - width) // 2, 0)
+        y = max((screen_height - height) // 2, 0)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _focus_search_entry(self) -> None:
         """Focus and place the cursor in the search entry."""

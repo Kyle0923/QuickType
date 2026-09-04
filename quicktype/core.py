@@ -4,7 +4,7 @@ from typing import Callable, List, Optional
 
 from iterfzf import iterfzf
 
-from .config import Snippet, SnippetManager
+from .SnippetManager import Snippet, SnippetManager
 
 
 class FuzzyMatcher:
@@ -111,19 +111,18 @@ class SnippetEngine:
         if not snippet:
             return False
 
-        self.insert_callback(snippet.content)
+        self.insert_callback(snippet.payload)
         return True
 
-    def add_snippet(self, name: str, content: str, tags: Optional[List[str]] = None) -> None:
+    def add_snippet(self, name: str, content: str) -> None:
         """
         Add a new snippet.
 
         Args:
             name: Unique snippet name.
             content: Text content to insert.
-            tags: Optional list of tags.
         """
-        snippet = Snippet(name=name, content=content, tags=tags or [])
+        snippet = Snippet(name=name, payload=content)
         self.manager.add_snippet(snippet)
 
     def remove_snippet(self, name: str) -> bool:

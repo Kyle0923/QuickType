@@ -93,5 +93,70 @@ mypy quicktype
 - **`quicktype/hotkey.py`** – Global hotkey registration
 - **`quicktype/utils.py`** – Platform utilities
 - **`quicktype/cli.py`** – Command-line entry point
+- **`quicktype/parser.py`** – Markdown note parser and search indexing
 
-See [.github/copilot-instructions.md](.github/copilot-instructions.md) for detailed development guidelines and conventions.
+## Data Organization
+
+QuickType uses a hierarchical markdown-based data structure stored in the `.data/` directory:
+
+### Directory Structure
+
+```
+.data/
+├── root.yaml           # Entry point: defines hierarchical organization
+├── windbg.md           # Example: WinDbg commands and debugging tips
+├── url.md              # Example: URL references
+└── note_*.md           # Additional markdown files for different categories
+```
+
+### root.yaml Format
+
+The `root.yaml` file defines how markdown files are organized into a searchable tree hierarchy. Leaf nodes map directly to section headers in markdown files.
+
+**Example:**
+```yaml
+root:
+  - windbg
+  - shell:
+    - pwsh
+    - bash:
+      - git
+      - generic
+```
+
+This structure maps to sections in markdown files. Every leaf node **must** map to a Markdown document of the same name. Every map node **may** optionally map to a Markdown document.
+
+### Markdown Note Format
+
+Each markdown file contains searchable sections with a strict format. Every section must have exactly:
+
+1. **One L1 header** (`#`) – Short name/title
+2. **One L2 header** (`##`) – Brief description
+3. **At most one blockquote block** (lines starting with `>`) – Comment (ignored in search)
+4. **One code block** (triple backticks) – Actual command or content
+
+**Example (`windbg.md`):**
+````markdown
+# bugcheck
+## decode bugcheck ID
+> Analyzes a bugcheck code and displays detailed information
+```
+!analyze -v
+!gs
+```
+
+# start TCP server
+## open a debug server
+> Opens a debugging server on the specified port
+```
+.server tcp:port={{port num}}
+```
+````
+
+**Searchable text includes:** L1 header + L2 header + code block (blockquotes are excluded)
+
+**Search behavior:**
+- Query "bugcheck", "decode", "analyze" → ✓ Matches
+- Query "displays detailed information" → ✗ No match (blockquote is ignored)
+- Placeholders like `{{port num}}` are preserved for user editing
+

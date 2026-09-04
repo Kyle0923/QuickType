@@ -1,4 +1,4 @@
-from quicktype.config import Snippet
+from quicktype.SnippetManager import Snippet
 from quicktype.core import FuzzyMatcher
 from quicktype.gui import SnippetSearchWindow
 from quicktype.hotkey import HotkeyManager
@@ -7,10 +7,10 @@ from quicktype.hotkey import HotkeyManager
 def test_fuzzy_matcher_handles_fzf_style_subsequence_queries():
     matcher = FuzzyMatcher(threshold=60)
     snippets = [
-        Snippet(name="greet", content="Hello there!"),
-        Snippet(name="hello", content="Hello world!"),
-        Snippet(name="test1", content="First test"),
-        Snippet(name="test2", content="Second test"),
+        Snippet(name="greet", payload="Hello there!"),
+        Snippet(name="hello", payload="Hello world!"),
+        Snippet(name="test1", payload="First test"),
+        Snippet(name="test2", payload="Second test"),
     ]
 
     results = matcher.search("g t r", snippets)
@@ -25,10 +25,10 @@ def test_search_window_uses_fuzzy_matching_for_space_separated_queries():
         on_select=lambda snippet_name: None,
         on_close=lambda: None,
         snippets=[
-            Snippet(name="greet", content="Hello there!"),
-            Snippet(name="hello", content="Hello world!"),
-            Snippet(name="test1", content="First test"),
-            Snippet(name="test2", content="Second test"),
+            Snippet(name="greet", payload="Hello there!"),
+            Snippet(name="hello", payload="Hello world!"),
+            Snippet(name="test1", payload="First test"),
+            Snippet(name="test2", payload="Second test"),
         ],
     )
 
@@ -44,9 +44,9 @@ def test_search_window_navigation_moves_selection_with_arrow_keys():
         on_select=lambda snippet_name: None,
         on_close=lambda: None,
         snippets=[
-            Snippet(name="alpha", content="A"),
-            Snippet(name="beta", content="B"),
-            Snippet(name="gamma", content="C"),
+            Snippet(name="alpha", payload="A"),
+            Snippet(name="beta", payload="B"),
+            Snippet(name="gamma", payload="C"),
         ],
     )
 
