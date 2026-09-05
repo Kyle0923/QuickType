@@ -11,7 +11,7 @@ def create_app_icon_image(size: int = 64):
     accent_height = max(size // 6, 1)
     draw.rectangle((0, 0, size - 1, accent_height), fill=(255, 220, 0))
 
-    font_size = max(int(size * 0.53), 12)
+    font_size = max(int(size * 0.7), 14)
     try:
         font = ImageFont.truetype("consolab.ttf", font_size)
     except Exception:
@@ -30,6 +30,6 @@ def create_app_icon_image(size: int = 64):
         text_height = int(size * 0.3)
 
     text_x = max((size - text_width) // 2 - 2, 0)
-    text_y = max((size - text_height) // 2 + accent_height // 2 - 2, 0)
+    text_y = max((size - text_height) // 2 - 2, 0)
     draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))
     return image

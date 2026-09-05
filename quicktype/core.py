@@ -4,7 +4,7 @@ from typing import Callable, List, Optional
 
 from iterfzf import iterfzf
 
-from .SnippetManager import Snippet, SnippetManager
+from .snippet import Snippet, SnippetManager
 
 
 class FuzzyMatcher:
@@ -124,8 +124,9 @@ class SnippetEngine:
         self,
         name: str,
         payload: str,
-        source: str,
+        group: str,
         description: Optional[str] = None,
+        location: Optional[str] = None,
     ) -> None:
         """
         Add a new snippet.
@@ -133,14 +134,15 @@ class SnippetEngine:
         Args:
             name: Unique snippet name.
             payload: Text content to insert.
-            source: Source markdown document name (without .md).
+            group: Source markdown document name (without .md).
             description: Optional short description (maps to markdown H2).
         """
         self.manager.add_snippet(
             name=name,
             description=description,
             payload=payload,
-            source=source,
+            group=group,
+            location=location,
         )
 
     def remove_snippet(self, name: str) -> bool:

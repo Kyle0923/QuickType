@@ -2,4 +2,4 @@
 
 __version__ = "0.1.0"
 __author__ = "QuickType Contributors"
-__all__ = ["app", "core", "SnippetManager", "gui", "hotkey"]
+__all__ = ["app", "core", "snippet", "gui", "hotkey"]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import List, Optional, Tuple
 
-from .SnippetManager import Snippet, SnippetManager
+from .snippet import Snippet, SnippetManager
 from .core import SnippetEngine, TextInserter
 from .gui import SnippetSearchWindow
 from .hotkey import HotkeyManager
@@ -220,7 +220,12 @@ class QuickTypeApp:
         try:
             if not md_path.exists():
                 md_path.touch()
-            subprocess.Popen(["code", "-r", str(md_path)])
+            subprocess.Popen(
+                ["code", "-r", str(md_path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except Exception as e:
             print(f"Error opening hierarchy document: {e}")
 
@@ -228,14 +233,14 @@ class QuickTypeApp:
         self,
         name: str,
         payload: str,
-        source: str,
+        group: str,
         description: Optional[str] = None,
     ) -> None:
         """Add a snippet to the manager."""
         self.engine.add_snippet(
             name=name,
             payload=payload,
-            source=source,
+            group=group,
             description=description,
         )
 

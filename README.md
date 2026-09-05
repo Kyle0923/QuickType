@@ -93,7 +93,7 @@ mypy quicktype
 - **`quicktype/hotkey.py`** – Global hotkey registration
 - **`quicktype/utils.py`** – Platform utilities
 - **`quicktype/cli.py`** – Command-line entry point
-- **`quicktype/parser.py`** – Markdown note parser and search indexing
+- **`quicktype/snippet.py`** – Markdown note parser, snippet model, and storage
 
 ## Data Organization
 
@@ -131,8 +131,8 @@ This structure maps to sections in markdown files. Every leaf node **must** map 
 Each markdown file contains searchable sections with a strict format. Every section must have exactly:
 
 1. **One L1 header** (`#`) – Short name/title
-2. **One L2 header** (`##`) – Brief description
-3. **At most one blockquote block** (lines starting with `>`) – Comment (ignored in search)
+2. **At most one L2 header** (`##`) – Brief description
+3. **At most one blockquote block** (lines starting with `>`) – Comment, ignored in search, show up in tooltip
 4. **One code block** (triple backticks) – Actual command or content
 
 **Example (`windbg.md`):**

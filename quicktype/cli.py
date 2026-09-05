@@ -6,7 +6,7 @@ from typing import List, Optional
 from .app import QuickTypeApp
 from .config import DEFAULT_HOTKEY
 from .core import SnippetEngine
-from .SnippetManager import SnippetManager
+from .snippet import SnippetManager
 
 def main(args: Optional[List[str]] = None) -> int:
     """
@@ -30,14 +30,14 @@ def main(args: Optional[List[str]] = None) -> int:
     elif args[0] == "add":
         # Add a snippet without launching the app
         if len(args) < 4:
-            print("Usage: quicktype add <source> <name> <payload> [description]")
+            print("Usage: quicktype add <group> <name> <payload> [description]")
             return 1
-        source, name, payload = args[1], args[2], args[3]
+        group, name, payload = args[1], args[2], args[3]
         description = args[4] if len(args) > 4 else None
         manager = SnippetManager()
         engine = SnippetEngine(manager)
-        engine.add_snippet(name=name, payload=payload, source=source, description=description)
-        print(f"Added snippet: {name} ({source})")
+        engine.add_snippet(name=name, payload=payload, group=group, description=description)
+        print(f"Added snippet: {name} ({group})")
         return 0
 
     elif args[0] == "list":

@@ -1,4 +1,4 @@
-from quicktype.SnippetManager import Snippet
+from quicktype.snippet import Snippet
 from quicktype.core import FuzzyMatcher
 from quicktype.gui import SnippetSearchWindow
 from quicktype.hotkey import HotkeyManager
@@ -165,6 +165,47 @@ def test_search_window_replace_with_current_variables_keeps_unset_tokens():
     assert result == "User=Alice Missing={{missing}} Empty={{empty}}"
 
 
+def test_search_window_tooltip_text_comes_from_snippet_note():
+    window = object.__new__(SnippetSearchWindow)
+    window.filtered_snippets = [
+        Snippet(name="demo", payload="x", note="Tooltip from markdown quote"),
+        Snippet(name="plain", payload="y"),
+    ]
+
+    assert window._get_snippet_tooltip_text(0) == "Tooltip from markdown quote"
+    assert window._get_snippet_tooltip_text(1) is None
+    assert window._get_snippet_tooltip_text(99) is None
+
+
+def test_search_window_hover_positions_tooltip_from_mouse_coordinates():
+    window = object.__new__(SnippetSearchWindow)
+    window.filtered_snippets = [
+        Snippet(name="demo", payload="x", note="Tooltip from markdown quote"),
+    ]
+
+    class FakeListbox:
+        def nearest(self, y):
+            _ = y
+            return 0
+
+    captured = {}
+    window.snippet_listbox = FakeListbox()
+    window._hide_note_tooltip = lambda: captured.setdefault("hidden", True)
+    window._show_note_tooltip = lambda text, x, y, idx: captured.update(
+        {"text": text, "x": x, "y": y, "idx": idx}
+    )
+
+    event = type("Event", (), {"y": 7, "x_root": 100, "y_root": 120})()
+    result = window._on_list_hover(event)
+
+    assert result == "break"
+    assert captured["text"] == "Tooltip from markdown quote"
+    assert captured["x"] == 114
+    assert captured["y"] == 142
+    assert captured["idx"] == 0
+    assert "hidden" not in captured
+
+
 def test_search_window_insert_hides_before_deferred_insert_callback():
     window = object.__new__(SnippetSearchWindow)
     window.selected_index = 0
@@ -222,6 +263,42 @@ def test_search_window_alt_enter_handler_uses_type_mode():
 
     assert result == "break"
     assert called["mode"] == "type"
+
+
+def test_search_window_double_click_opens_matching_snippet_location():
+    window = object.__new__(SnippetSearchWindow)
+    window.filtered_snippets = [
+        Snippet(name="demo", payload="x", location="/tmp/demo.md:12"),
+    ]
+
+    called = {}
+
+    class FakeListbox:
+        def nearest(self, y):
+            _ = y
+            return 0
+
+        def selection_clear(self, start, end):
+            _ = start, end
+
+        def selection_set(self, index):
+            called["selected"] = index
+
+        def activate(self, index):
+            called["activated"] = index
+
+    window.snippet_listbox = FakeListbox()
+    window.selected_index = -1
+    window._update_preview = lambda snippet: called.setdefault("preview", snippet.location)
+    window._open_snippet_location = lambda snippet: called.setdefault("opened", snippet.location)
+
+    result = window._on_snippet_double_click(type("Event", (), {"y": 5})())
+
+    assert result == "break"
+    assert called["selected"] == 0
+    assert called["activated"] == 0
+    assert called["preview"] == "/tmp/demo.md:12"
+    assert called["opened"] == "/tmp/demo.md:12"
 
 
 def test_snippet_engine_insert_text_uses_insert_callback():

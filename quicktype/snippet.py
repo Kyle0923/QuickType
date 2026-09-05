@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import DEFAULT_DATA_DIR
 from .hierarchy import HierarchyManager
@@ -22,13 +22,17 @@ class Snippet:
         name: str,
         description: Optional[str] = None,
         payload: str = "",
+        note: Optional[str] = None,
         searchable_text: Optional[str] = None,
-        source: Optional[str] = None,
+        group: Optional[str] = None,
+        location: Optional[str] = None,
     ) -> None:
         self.name = name
         self.payload = payload
         self.description = description
-        self.source = source
+        self.note = note
+        self.group = group
+        self.location = location
 
         if searchable_text is None:
             parts = [self.name]
@@ -46,8 +50,10 @@ class Snippet:
             "name": self.name,
             "description": self.description,
             "payload": self.payload,
+            "note": self.note,
             "searchable_text": self.searchable_text,
-            "source": self.source,
+            "group": self.group,
+            "location": self.location,
         }
 
     @staticmethod
@@ -58,8 +64,10 @@ class Snippet:
             name=data.get("name", ""),
             description=data.get("description"),
             payload=payload,
+            note=data.get("note"),
             searchable_text=data.get("searchable_text"),
-            source=data.get("source"),
+            group=data.get("group"),
+            location=data.get("location"),
         )
 
 
@@ -75,7 +83,7 @@ def extract_code_block(text: str) -> str:
     return matches[0].group(1).strip()
 
 
-def extract_quote_block(text: str) -> str:
+def extract_quote_block(text: str) -> Optional[str]:
     """Extract a single contiguous blockquote block (if present)."""
     lines = text.split("\n")
     blockquote_groups: List[List[str]] = []
@@ -94,62 +102,83 @@ def extract_quote_block(text: str) -> str:
     if len(blockquote_groups) > 1:
         raise FormatError(f"Expected at most 1 blockquote block, found {len(blockquote_groups)}")
 
-    return " ".join(blockquote_groups[0]) if blockquote_groups else ""
+    # Preserve quote line breaks so tooltip text matches markdown note formatting.
+    return "\n".join(blockquote_groups[0]) if blockquote_groups else None
+
+
+def _section_location(file_path: Path, line_number: int) -> str:
+    """Format a file location for VS Code's `-g` flag."""
+    return f"{file_path}:{line_number}"
+
+
+def _heading_sections(lines: List[str], prefix: str) -> List[Tuple[int, str]]:
+    """Return (line_index, heading_name) tuples for headings with the given prefix."""
+    sections: List[Tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            sections.append((index, line[len(prefix) :].strip()))
+    return sections
+
+
+def _append_parsed_snippet(
+    snippets: List[Snippet],
+    file_path: Path,
+    name: str,
+    description: Optional[str],
+    section_lines: List[str],
+    location_line: int,
+    section_label: str,
+) -> None:
+    """Parse a section body and append a validated snippet."""
+    section_text = "\n".join(section_lines)
+
+    try:
+        code_block = extract_code_block(section_text)
+        quote_block = extract_quote_block(section_text)
+        snippets.append(
+            Snippet(
+                name=name,
+                description=description,
+                payload=code_block,
+                note=quote_block,
+                searchable_text=(
+                    f"{name} {description} {code_block}" if description else f"{name} {code_block}"
+                ),
+                group=file_path.stem,
+                location=_section_location(file_path, location_line),
+            )
+        )
+    except FormatError as exc:
+        raise FormatError(f"Invalid format in {file_path} at section '{section_label}': {exc}") from exc
 
 
 def parse_markdown_file(file_path: Path) -> List[Snippet]:
     """Parse one markdown file and return snippet entries with strict validation."""
     snippets: List[Snippet] = []
-    content = file_path.read_text(encoding="utf-8")
+    lines = file_path.read_text(encoding="utf-8").splitlines()
 
-    h1_pattern = r"^# (.+)$"
-    h1_blocks = re.split(h1_pattern, content, flags=re.MULTILINE)
+    h1_sections = _heading_sections(lines, "# ")
+    for index, (h1_line_index, h1_name) in enumerate(h1_sections):
+        h1_end = h1_sections[index + 1][0] if index + 1 < len(h1_sections) else len(lines)
+        h1_body_lines = lines[h1_line_index + 1 : h1_end]
+        h2_sections = _heading_sections(h1_body_lines, "## ")
 
-    for i in range(1, len(h1_blocks), 2):
-        h1_name = h1_blocks[i].strip()
-        h1_content_block = h1_blocks[i + 1] if i + 1 < len(h1_blocks) else ""
+        if len(h2_sections) > 1:
+            raise FormatError(
+                f"Invalid format in {file_path} at section '# {h1_name}': "
+                "Expected at most one H2 description"
+            )
 
-        h2_pattern = r"^## (.+)$"
-        h2_blocks = re.split(h2_pattern, h1_content_block, flags=re.MULTILINE)
-
-        if len(h2_blocks) <= 1:
-            try:
-                code_block = extract_code_block(h1_content_block)
-                _ = extract_quote_block(h1_content_block)
-                snippets.append(
-                    Snippet(
-                        name=h1_name,
-                        description=None,
-                        payload=code_block,
-                        searchable_text=f"{h1_name} {code_block}",
-                        source=file_path.stem,
-                    )
-                )
-            except FormatError as exc:
-                raise FormatError(
-                    f"Invalid format in {file_path} at section '# {h1_name}': {exc}"
-                ) from exc
-        else:
-            for j in range(1, len(h2_blocks), 2):
-                h2_name = h2_blocks[j].strip()
-                h2_content_block = h2_blocks[j + 1] if j + 1 < len(h2_blocks) else ""
-
-                try:
-                    code_block = extract_code_block(h2_content_block)
-                    _ = extract_quote_block(h2_content_block)
-                    snippets.append(
-                        Snippet(
-                            name=h1_name,
-                            description=h2_name,
-                            payload=code_block,
-                            searchable_text=f"{h1_name} {h2_name} {code_block}",
-                            source=file_path.stem,
-                        )
-                    )
-                except FormatError as exc:
-                    raise FormatError(
-                        f"Invalid format in {file_path} at section '# {h1_name} / ## {h2_name}': {exc}"
-                    ) from exc
+        description = h2_sections[0][1] if h2_sections else None
+        _append_parsed_snippet(
+            snippets=snippets,
+            file_path=file_path,
+            name=h1_name,
+            description=description,
+            section_lines=h1_body_lines,
+            location_line=h1_line_index + 1,
+            section_label=f"# {h1_name}",
+        )
 
     return snippets
 
@@ -224,25 +253,36 @@ class SnippetManager:
         name: str,
         description: Optional[str],
         payload: str,
-        source: str,
+        group: str,
+        location: Optional[str] = None,
     ) -> Snippet:
-        """Append a snippet section to {source}.md and refresh in-memory pools."""
-        source_name = source.strip()
+        """Append a snippet section to {group}.md and refresh in-memory pools."""
+        source_name = group.strip()
         if not source_name:
-            raise ValueError("source must not be empty")
+            raise ValueError("group must not be empty")
 
         snippet = Snippet(
             name=name.strip(),
             description=description.strip() if description else None,
             payload=payload,
-            source=source_name,
+            group=source_name,
+            location=location,
         )
         if not snippet.name:
             raise ValueError("name must not be empty")
 
         md_path = self.data_dir / f"{source_name}.md"
         block = self._format_markdown_snippet(snippet)
-        needs_separator = md_path.exists() and md_path.read_text(encoding="utf-8").strip() != ""
+        existing_text = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
+        needs_separator = existing_text.strip() != ""
+
+        if existing_text:
+            next_line = len(existing_text.splitlines()) + (2 if existing_text.endswith("\n") else 1)
+        else:
+            next_line = 1
+
+        # H1 is the snippet identity, so location always points to the new H1 line.
+        snippet.location = f"{md_path}:{next_line}"
 
         with md_path.open("a", encoding="utf-8") as handle:
             if needs_separator:

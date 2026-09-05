@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from quicktype.core import SnippetEngine
-from quicktype.SnippetManager import SnippetManager
+from quicktype.snippet import SnippetManager
 
 
 def _write(path: Path, content: str) -> None:
@@ -29,7 +29,7 @@ def test_snippet_manager_loads_all_markdowns_and_composes_active_pool(tmp_path: 
 
     manager = SnippetManager(data_dir=tmp_path)
 
-    all_sources = sorted({snippet.source for snippet in manager.list_all_snippets()})
+    all_sources = sorted({snippet.group for snippet in manager.list_all_snippets()})
     assert all_sources == ["leaf_a", "leaf_b", "orphan", "parent"]
 
     assert manager.active_source_names() == ["parent", "leaf_a", "leaf_b"]
@@ -85,17 +85,19 @@ def test_add_snippet_appends_parser_compatible_markdown(tmp_path: Path) -> None:
     _write(tmp_path / "notes.md", _simple_note("existing", "echo existing"))
 
     manager = SnippetManager(data_dir=tmp_path)
-    manager.add_snippet(
+    added = manager.add_snippet(
         name="new item",
         description="short description",
         payload="echo hello",
-        source="notes",
+        group="notes",
     )
 
     content = (tmp_path / "notes.md").read_text(encoding="utf-8")
     assert "# new item" in content
     assert "## short description" in content
     assert "```\necho hello\n```" in content
+    assert added.location is not None
+    assert added.location.endswith("notes.md:6")
 
     reloaded = SnippetManager(data_dir=tmp_path)
     names = sorted(snippet.name for snippet in reloaded.list_snippets())

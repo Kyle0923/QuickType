@@ -1,11 +1,12 @@
 """GUI components for QuickType - search window and snippet display."""
 
 import re
+import subprocess
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Dict, List, Optional, Tuple
 
-from .SnippetManager import Snippet
+from .snippet import Snippet
 from .config import DEFAULT_HOTKEY, DEFAULT_WINDOW_GEOMETRY, DEFAULT_WINDOW_MIN_SIZE
 from .core import FuzzyMatcher
 from .icons import create_app_icon_image
@@ -18,6 +19,8 @@ class SnippetSearchWindow:
     HIERARCHY_ROOT_ID = "__navigation_root__"
     HIERARCHY_ROOT_LABEL = "root"
     PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_.\-\s]+?)\s*\}\}")
+    TOOLTIP_X_OFFSET = 14
+    TOOLTIP_Y_OFFSET = 22
 
     def __init__(
         self,
@@ -58,6 +61,9 @@ class SnippetSearchWindow:
         self._pending_hierarchy_toggle_id = None
         self._pending_hierarchy_item: Optional[str] = None
         self._hierarchy_tree_initialized = False
+        self._note_tooltip: Optional[tk.Toplevel] = None
+        self._note_tooltip_label: Optional[ttk.Label] = None
+        self._tooltip_index: Optional[int] = None
 
         self.root = tk.Tk()
         self.root.title("QuickType Search")
@@ -206,6 +212,9 @@ class SnippetSearchWindow:
         )
         self.snippet_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.snippet_listbox.bind("<<ListboxSelect>>", self._on_list_select)
+        self.snippet_listbox.bind("<Motion>", self._on_list_hover)
+        self.snippet_listbox.bind("<Leave>", self._on_list_leave)
+        self.snippet_listbox.bind("<Double-1>", self._on_snippet_double_click)
         self.snippet_listbox.bind("<Return>", self._on_enter)
         self.snippet_listbox.bind("<KP_Enter>", self._on_enter)
         self.snippet_listbox.bind("<Alt-Return>", self._on_alt_enter)
@@ -379,11 +388,107 @@ class SnippetSearchWindow:
 
     def _on_list_select(self, event: tk.Event) -> None:
         """Handle snippet selection in listbox."""
+        _ = event
         selection = self.snippet_listbox.curselection()
         if selection:
             self.selected_index = selection[0]
             if self.selected_index < len(self.filtered_snippets):
                 self._update_preview(self.filtered_snippets[self.selected_index])
+
+    def _on_list_hover(self, event: tk.Event) -> str:
+        """Show a tooltip with markdown note text when hovering a snippet row."""
+        index = self.snippet_listbox.nearest(event.y)
+        tooltip_text = self._get_snippet_tooltip_text(index)
+
+        if not tooltip_text:
+            self._hide_note_tooltip()
+            return "break"
+
+        screen_x = event.x_root + self.TOOLTIP_X_OFFSET
+        screen_y = event.y_root + self.TOOLTIP_Y_OFFSET
+        self._show_note_tooltip(tooltip_text, screen_x, screen_y, index)
+        return "break"
+
+    def _on_list_leave(self, event: tk.Event) -> str:
+        """Hide note tooltip when pointer leaves the snippet list."""
+        _ = event
+        self._hide_note_tooltip()
+        return "break"
+
+    def _get_snippet_tooltip_text(self, index: int) -> Optional[str]:
+        """Return tooltip text for a list index, using snippet note/quote text."""
+        if index < 0 or index >= len(self.filtered_snippets):
+            return None
+
+        note_text = (self.filtered_snippets[index].note or "").strip()
+        return note_text or None
+
+    def _show_note_tooltip(self, text: str, x: int, y: int, index: int) -> None:
+        """Create or update lightweight tooltip near the hovered list row."""
+        if self._note_tooltip is None:
+            self._note_tooltip = tk.Toplevel(self.root)
+            self._note_tooltip.wm_overrideredirect(True)
+            self._note_tooltip.attributes("-topmost", True)
+            self._note_tooltip_label = ttk.Label(
+                self._note_tooltip,
+                text=text,
+                justify=tk.LEFT,
+                wraplength=360,
+                padding=(8, 6),
+                relief=tk.SOLID,
+                borderwidth=1,
+            )
+            self._note_tooltip_label.pack()
+        elif self._note_tooltip_label:
+            self._note_tooltip_label.config(text=text)
+
+        self._tooltip_index = index
+        self._note_tooltip.deiconify()
+        self._note_tooltip.update_idletasks()
+
+        tooltip_width = self._note_tooltip.winfo_reqwidth()
+        tooltip_height = self._note_tooltip.winfo_reqheight()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        bounded_x = max(0, min(x, max(screen_width - tooltip_width - 4, 0)))
+        bounded_y = max(0, min(y, max(screen_height - tooltip_height - 4, 0)))
+        self._note_tooltip.geometry(f"+{bounded_x}+{bounded_y}")
+
+    def _hide_note_tooltip(self) -> None:
+        """Hide tooltip if currently visible."""
+        self._tooltip_index = None
+        if self._note_tooltip is not None:
+            self._note_tooltip.withdraw()
+
+    def _open_snippet_location(self, snippet: Snippet) -> None:
+        """Open a snippet's source location in VS Code."""
+        if not snippet.location:
+            return
+
+        try:
+            subprocess.Popen(
+                ["code", "-g", snippet.location],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            print(f"Error opening snippet location: {e}")
+
+    def _on_snippet_double_click(self, event: tk.Event) -> str:
+        """Open the selected note location in VS Code on double-click."""
+        index = self.snippet_listbox.nearest(event.y)
+        if index < 0 or index >= len(self.filtered_snippets):
+            return "break"
+
+        self.selected_index = index
+        self.snippet_listbox.selection_clear(0, tk.END)
+        self.snippet_listbox.selection_set(index)
+        self.snippet_listbox.activate(index)
+        self._update_preview(self.filtered_snippets[index])
+        self._open_snippet_location(self.filtered_snippets[index])
+        return "break"
 
     def _on_arrow_key(self, event: tk.Event) -> str:
         """Move the current snippet selection with the keyboard arrow keys."""
@@ -750,6 +855,7 @@ class SnippetSearchWindow:
     def _hide_window(self) -> None:
         """Hide the window (minimize to tray)."""
         try:
+            self._hide_note_tooltip()
             self.root.withdraw()
             self.on_close()
         except Exception:
@@ -844,6 +950,10 @@ class SnippetSearchWindow:
     def destroy(self) -> None:
         """Properly destroy the window and clean up."""
         try:
+            if self._note_tooltip is not None:
+                self._note_tooltip.destroy()
+                self._note_tooltip = None
+                self._note_tooltip_label = None
             self.root.quit()
             self.root.destroy()
         except Exception:
