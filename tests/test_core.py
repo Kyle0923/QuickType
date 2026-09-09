@@ -21,6 +21,18 @@ def test_fuzzy_matcher_handles_fzf_style_subsequence_queries():
     assert [snippet.name for snippet in and_results] == ["greet"]
 
 
+def test_fuzzy_matcher_uses_searchable_text_content():
+    matcher = FuzzyMatcher(threshold=60)
+    snippets = [
+        Snippet(name="alpha", searchable_text="alpha quick brown fox"),
+        Snippet(name="beta", searchable_text="beta jump server 5050"),
+    ]
+
+    results = matcher.search("server 5050", snippets)
+
+    assert [snippet.name for snippet in results] == ["beta"]
+
+
 def test_search_window_uses_fuzzy_matching_for_space_separated_queries():
     window = SnippetSearchWindow(
         on_select=lambda snippet_name: None,
@@ -144,15 +156,22 @@ def test_search_window_get_final_text_trims_tk_trailing_newline():
 def test_search_window_extract_placeholders_returns_unique_names_in_order():
     window = object.__new__(SnippetSearchWindow)
 
-    placeholders = window._extract_placeholders(
-        "echo {{name}} and {{ value_1 }} then {{name}} and {{path.to-file}}"
+    placeholders, defaults = window._extract_placeholders(
+        "echo {{name}} and {{ value_1 }} then {{name:anon}} and {{path.to-file:~/x}}"
     )
 
     assert placeholders == ["name", "value_1", "path.to-file"]
+    assert defaults == {
+        "name": "",
+        "value_1": "",
+        "path.to-file": "~/x",
+    }
 
 
 def test_search_window_replace_with_current_variables_keeps_unset_tokens():
     window = object.__new__(SnippetSearchWindow)
+    window._variable_vars = {}
+    window._placeholder_defaults = {}
     window._variable_values = {
         "name": "Alice",
         "empty": "",
@@ -163,6 +182,37 @@ def test_search_window_replace_with_current_variables_keeps_unset_tokens():
     )
 
     assert result == "User=Alice Missing={{missing}} Empty={{empty}}"
+
+
+def test_search_window_replace_uses_default_when_runtime_value_missing():
+    window = object.__new__(SnippetSearchWindow)
+    window._variable_vars = {}
+    window._variable_values = {}
+    window._placeholder_defaults = {"port": "5050"}
+
+    result = window._replace_with_current_variables(".server tcp:port={{port}}")
+
+    assert result == ".server tcp:port=5050"
+
+
+def test_search_window_variable_editor_keeps_previously_changed_names():
+    window = object.__new__(SnippetSearchWindow)
+    window._variable_values = {
+        "env": "prod",
+        "user": "alice",
+    }
+
+    names = window._get_variable_editor_names(["port"])
+
+    assert names == ["port", "env", "user"]
+
+
+def test_search_window_normalizes_default_placeholders_for_preview_template():
+    window = object.__new__(SnippetSearchWindow)
+
+    normalized = window._normalize_placeholders(".server tcp:port={{port_num:5050}}")
+
+    assert normalized == ".server tcp:port={{port_num}}"
 
 
 def test_search_window_tooltip_text_comes_from_snippet_note():

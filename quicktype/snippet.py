@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from .config import DEFAULT_DATA_DIR
 from .hierarchy import HierarchyManager
 
+from .util import fzf_escape
+
 
 class FormatError(Exception):
     """Raised when markdown snippet format is invalid."""
@@ -43,6 +45,9 @@ class Snippet:
             self.searchable_text = " ".join(parts)
         else:
             self.searchable_text = searchable_text
+        # normalize whitespace in searchable_text to avoid search mismatches due to newlines or tabs.
+        self.searchable_text = re.sub(r"[\t\r\n]+", " ", self.searchable_text)
+        self.searchable_text = fzf_escape(self.searchable_text)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize snippet to a dictionary."""
@@ -309,9 +314,6 @@ class SnippetManager:
 
     def list_snippets(self) -> List[Snippet]:
         return list(self.snippets.values())
-
-    def search_by_tag(self, tag: str) -> List[Snippet]:
-        return []
 
 
 __all__ = [

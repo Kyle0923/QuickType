@@ -54,7 +54,7 @@ def test_parser_preserves_placeholders():
     tcp_section = [s for s in sections.get('windbg', [])
                    if s.description == 'open a debug server'][0]
 
-    assert '{{port num}}' in tcp_section.payload
+    assert '{{port_num:5050}}' in tcp_section.payload
 
     print("✓ Placeholders preserved in content")
 

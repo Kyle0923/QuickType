@@ -18,7 +18,7 @@ class SnippetSearchWindow:
     LIST_ITEM_LEFT_PAD = "  "
     HIERARCHY_ROOT_ID = "__navigation_root__"
     HIERARCHY_ROOT_LABEL = "root"
-    PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_.\-\s]+?)\s*\}\}")
+    PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_.\-]+)(?:\s*:\s*([^}]*?))?\s*\}\}")
     TOOLTIP_X_OFFSET = 14
     TOOLTIP_Y_OFFSET = 22
 
@@ -56,6 +56,8 @@ class SnippetSearchWindow:
         self.fuzzy_matcher = FuzzyMatcher(threshold=60)
         self._final_original_text = ""
         self._placeholder_names: List[str] = []
+        self._placeholder_defaults: Dict[str, str] = {}
+        self._placeholder_set = set()
         self._variable_values: Dict[str, str] = {}
         self._variable_vars: Dict[str, tk.StringVar] = {}
         self._pending_hierarchy_toggle_id = None
@@ -554,77 +556,132 @@ class SnippetSearchWindow:
 
     def _update_preview(self, snippet: Snippet) -> None:
         """Update the content preview for a snippet."""
+        normalized_preview = self._normalize_placeholders(snippet.payload)
+        placeholders, defaults = self._extract_placeholders(snippet.payload)
+
         self.preview_text.config(state=tk.NORMAL)
         self.preview_text.delete(1.0, tk.END)
-        self.preview_text.insert(tk.END, snippet.payload)
+        self.preview_text.insert(tk.END, normalized_preview)
         self.preview_text.config(state=tk.DISABLED)
 
-        self._final_original_text = snippet.payload
-        placeholders = self._extract_placeholders(self._final_original_text)
+        self._final_original_text = normalized_preview
+        self._placeholder_names = placeholders
+        self._placeholder_set = set(placeholders)
+        self._placeholder_defaults = defaults
         self._render_variable_editor(placeholders)
         self._refresh_final_text_from_variables()
 
     def _reset_final_text(self) -> None:
         """Restore the editable final text to the last selected snippet payload."""
-        for variable_var in self._variable_vars.values():
-            variable_var.set("")
+        for name, variable_var in self._variable_vars.items():
+            variable_var.set(self._placeholder_defaults.get(name, ""))
         self._refresh_final_text_from_variables()
 
-    def _extract_placeholders(self, text: str) -> List[str]:
-        """Extract unique placeholder names from {{name}} tokens in order."""
+    def _extract_placeholders(self, text: str) -> Tuple[List[str], Dict[str, str]]:
+        """Extract unique placeholder names/defaults from {{name[:default]}} tokens."""
         ordered: List[str] = []
         seen = set()
+        defaults: Dict[str, str] = {}
         for match in self.PLACEHOLDER_PATTERN.finditer(text):
             name = match.group(1).strip()
             if name and name not in seen:
                 seen.add(name)
                 ordered.append(name)
-        return ordered
+            if name:
+                raw_default = match.group(2)
+                default_value = raw_default.strip() if raw_default is not None else ""
+                if name not in defaults:
+                    defaults[name] = default_value
+        return ordered, defaults
+
+    def _normalize_placeholders(self, text: str) -> str:
+        """Normalize placeholders to {{name}} for preview/final template rendering."""
+
+        def replace(match: re.Match) -> str:
+            name = match.group(1).strip()
+            return f"{{{{{name}}}}}"
+
+        return self.PLACEHOLDER_PATTERN.sub(replace, text)
 
     def _replace_with_current_variables(self, text: str) -> str:
         """Replace placeholders with user-provided values when available."""
 
         def replace(match: re.Match) -> str:
             key = match.group(1).strip()
-            value = self._variable_values.get(key, "")
-            return value if value else match.group(0)
+            current_value = self._get_current_variable_value(key)
+            if current_value is not None:
+                value = current_value
+                return value if value else match.group(0)
+            if key in self._placeholder_defaults:
+                default_value = self._placeholder_defaults.get(key, "")
+                return default_value if default_value else match.group(0)
+            return match.group(0)
 
         return self.PLACEHOLDER_PATTERN.sub(replace, text)
+
+    def _get_current_variable_value(self, name: str) -> Optional[str]:
+        """Return the runtime value for a variable from visible input or saved user values."""
+        variable_vars = getattr(self, "_variable_vars", {})
+        variable_var = variable_vars.get(name)
+        if variable_var is not None:
+            return variable_var.get()
+        variable_values = getattr(self, "_variable_values", {})
+        if name in variable_values:
+            return variable_values[name]
+        return None
+
+    def _get_variable_editor_names(self, placeholders: List[str]) -> List[str]:
+        """Keep current placeholders first, then persist previously edited variable names."""
+        names = list(placeholders)
+        for name in self._variable_values.keys():
+            if name not in names:
+                names.append(name)
+        return names
 
     def _render_variable_editor(self, placeholders: List[str]) -> None:
         """Render variable entry rows based on placeholders in the selected snippet."""
         self._placeholder_names = placeholders
+        self._placeholder_set = set(placeholders)
         self._variable_vars = {}
+        display_names = self._get_variable_editor_names(placeholders)
 
         for child in self.variable_container.winfo_children():
             child.destroy()
 
-        if not placeholders:
+        if not display_names:
             ttk.Label(
                 self.variable_container,
                 text="No placeholders in this snippet.",
             ).grid(row=0, column=0, padx=6, pady=6, sticky="w")
             return
 
-        for row_index, placeholder in enumerate(placeholders):
+        for row_index, placeholder in enumerate(display_names):
             ttk.Label(
                 self.variable_container,
                 text=placeholder,
             ).grid(row=row_index, column=0, padx=(6, 4), pady=4, sticky="w")
 
-            value_var = tk.StringVar(value=self._variable_values.get(placeholder, ""))
-            value_var.trace_add("write", self._on_variable_change)
+            if placeholder in self._variable_values:
+                initial_value = self._variable_values[placeholder]
+            else:
+                initial_value = self._placeholder_defaults.get(placeholder, "")
+
+            value_var = tk.StringVar(value=initial_value)
+            value_var.trace_add(
+                "write",
+                lambda *args, variable_name=placeholder: self._on_variable_change(variable_name),
+            )
             entry = ttk.Entry(self.variable_container, textvariable=value_var, width=18)
             entry.grid(row=row_index, column=1, padx=(0, 6), pady=4, sticky="ew")
             self._variable_vars[placeholder] = value_var
 
         self.variable_container.columnconfigure(1, weight=1)
 
-    def _on_variable_change(self, *args) -> None:
+    def _on_variable_change(self, variable_name: str) -> None:
         """Track variable values and refresh final text after edits."""
-        _ = args
-        for name, variable_var in self._variable_vars.items():
-            self._variable_values[name] = variable_var.get()
+        variable_var = self._variable_vars.get(variable_name)
+        if variable_var is not None:
+            self._variable_values[variable_name] = variable_var.get()
         self._refresh_final_text_from_variables()
 
     def _refresh_final_text_from_variables(self) -> None:
@@ -662,11 +719,11 @@ class SnippetSearchWindow:
             "",
             tk.END,
             iid=self.HIERARCHY_ROOT_ID,
-            text=self._hierarchy_root_label(all_enabled),
+            text=self._hierarchy_label("root", "CHECKED" if all_enabled else "UNCHECKED"),
         )
         for node_name, parent_name, enabled in rows:
             parent_id = parent_name if parent_name else self.HIERARCHY_ROOT_ID
-            label = self._hierarchy_label(node_name, enabled)
+            label = self._hierarchy_label(node_name, "CHECKED" if enabled else "UNCHECKED")
             self.hierarchy_tree.insert(parent_id, tk.END, iid=node_name, text=label)
 
         if not self._hierarchy_tree_initialized:
@@ -686,15 +743,15 @@ class SnippetSearchWindow:
             yield item_id
             yield from self._iter_tree_items(item_id)
 
-    def _hierarchy_label(self, node_name: str, enabled: bool) -> str:
+    def _hierarchy_label(self, node_name: str, state: str) -> str:
         """Build an ASCII checkbox-like label for hierarchy nodes."""
-        marker = "[x]" if enabled else "[ ]"
+        labels = {
+            "UNCHECKED": "☐",
+            "CHECKED": "☑",
+            "PARTIAL": "☒",
+        }
+        marker = labels.get(state, "UNCHECKED")
         return f"{marker} {node_name}"
-
-    def _hierarchy_root_label(self, enabled: bool) -> str:
-        """Build an ASCII checkbox-like label for the synthetic root node."""
-        marker = "[x]" if enabled else "[ ]"
-        return f"{marker} root"
 
     def _expand_all_hierarchy_items(self) -> None:
         """Expand every node in the hierarchy tree."""
@@ -792,10 +849,6 @@ class SnippetSearchWindow:
             # Let Treeview handle expand/collapse without changing enable state.
             return ""
 
-        if item_id == self.HIERARCHY_ROOT_ID:
-            self.hierarchy_tree.selection_set(item_id)
-            self._schedule_hierarchy_toggle(item_id)
-            return "break"
 
         self.hierarchy_tree.selection_set(item_id)
         self._schedule_hierarchy_toggle(item_id)

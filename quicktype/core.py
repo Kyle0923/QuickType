@@ -5,10 +5,10 @@ from typing import Callable, List, Optional
 from iterfzf import iterfzf
 
 from .snippet import Snippet, SnippetManager
-
+from .util import fzf_escape
 
 class FuzzyMatcher:
-    """Handles fuzzy matching of snippet names using the fzf algorithm."""
+    """Handles fuzzy matching using each snippet's searchable text."""
 
     def __init__(self, threshold: int = 60):
         """
@@ -33,27 +33,40 @@ class FuzzyMatcher:
         if not query:
             return snippets
 
-        names = [snippet.name for snippet in snippets]
-        matched_names = iterfzf(
-            names,
+        query = fzf_escape(query)
+
+        candidates = [
+            f"{snippet_index}\t{snippet.searchable_text}"
+            for snippet_index, snippet in enumerate(snippets)
+        ]
+        matched_candidates = iterfzf(
+            candidates,
             multi=True,
-            case_sensitive=False,
+            case_sensitive=None,
             extended=True,
             sort=True,
-            __extra__=[f"--filter={query}"]
+            __extra__=[
+                "--delimiter=\t",
+                "--nth=2..",
+                f"--filter={query}",
+            ],
         )
 
-        if not matched_names:
+        if not matched_candidates:
             return []
-        if isinstance(matched_names, str):
-            matched_names = [matched_names]
+        if isinstance(matched_candidates, str):
+            matched_candidates = [matched_candidates]
 
-        name_to_snippet = {snippet.name: snippet for snippet in snippets}
-        return [
-            name_to_snippet[name]
-            for name in matched_names
-            if name in name_to_snippet
-        ]
+        matched_snippets: List[Snippet] = []
+        for candidate in matched_candidates:
+            key_text, _, _ = candidate.partition("\t")
+            try:
+                snippet_index = int(key_text)
+            except ValueError:
+                continue
+            if 0 <= snippet_index < len(snippets):
+                matched_snippets.append(snippets[snippet_index])
+        return matched_snippets
 
 
 class SnippetEngine:

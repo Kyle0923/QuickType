@@ -124,7 +124,7 @@ root:
       - generic
 ```
 
-This structure maps to sections in markdown files. Every leaf node **must** map to a Markdown document of the same name. Every map node **may** optionally map to a Markdown document.
+This structure maps to sections in markdown files. Every leaf node **must** map to a Markdown document of the same name; branch nodes must not have corresponding files.
 
 ### Markdown Note Format
 
