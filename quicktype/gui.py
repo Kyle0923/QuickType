@@ -21,6 +21,7 @@ class SnippetSearchWindow:
     PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_.\-]+)(?:\s*:\s*([^}]*?))?\s*\}\}")
     TOOLTIP_X_OFFSET = 14
     TOOLTIP_Y_OFFSET = 22
+    CONTROL_MODIFIER_MASK = 0x0004
 
     def __init__(
         self,
@@ -158,6 +159,7 @@ class SnippetSearchWindow:
         hierarchy_scrollbar.config(command=self.hierarchy_tree.yview)
         self.hierarchy_tree.bind("<Button-1>", self._on_hierarchy_click)
         self.hierarchy_tree.bind("<Double-1>", self._on_hierarchy_double_click)
+        self.hierarchy_tree.bind("<Button-3>", self._on_hierarchy_right_click)
         self.hierarchy_tree.bind("<space>", self._on_hierarchy_keyboard_toggle)
         self.hierarchy_tree.bind("<Return>", self._on_hierarchy_keyboard_toggle)
 
@@ -217,6 +219,7 @@ class SnippetSearchWindow:
         self.snippet_listbox.bind("<Motion>", self._on_list_hover)
         self.snippet_listbox.bind("<Leave>", self._on_list_leave)
         self.snippet_listbox.bind("<Double-1>", self._on_snippet_double_click)
+        self.snippet_listbox.bind("<Button-3>", self._on_snippet_right_click)
         self.snippet_listbox.bind("<Return>", self._on_enter)
         self.snippet_listbox.bind("<KP_Enter>", self._on_enter)
         self.snippet_listbox.bind("<Alt-Return>", self._on_alt_enter)
@@ -470,7 +473,7 @@ class SnippetSearchWindow:
 
         try:
             subprocess.Popen(
-                ["code", "-g", snippet.location],
+                ["code", "-r", "-g", snippet.location],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -479,18 +482,34 @@ class SnippetSearchWindow:
             print(f"Error opening snippet location: {e}")
 
     def _on_snippet_double_click(self, event: tk.Event) -> str:
-        """Open the selected note location in VS Code on double-click."""
+        """Insert the selected snippet, use keyboard mode if Ctrl is held."""
+        if not self._select_snippet_at_event(event):
+            return "break"
+
+        mode = "type" if event.state & self.CONTROL_MODIFIER_MASK else "paste"
+        self._insert_selected(mode=mode)
+        return "break"
+
+    def _on_snippet_right_click(self, event: tk.Event) -> str:
+        """Open the selected snippet's source location in VS Code on right-click."""
+        if not self._select_snippet_at_event(event):
+            return "break"
+
+        self._open_snippet_location(self.filtered_snippets[self.selected_index])
+        return "break"
+
+    def _select_snippet_at_event(self, event: tk.Event) -> bool:
+        """Select and preview the snippet located at a pointer event."""
         index = self.snippet_listbox.nearest(event.y)
         if index < 0 or index >= len(self.filtered_snippets):
-            return "break"
+            return False
 
         self.selected_index = index
         self.snippet_listbox.selection_clear(0, tk.END)
         self.snippet_listbox.selection_set(index)
         self.snippet_listbox.activate(index)
         self._update_preview(self.filtered_snippets[index])
-        self._open_snippet_location(self.filtered_snippets[index])
-        return "break"
+        return True
 
     def _on_arrow_key(self, event: tk.Event) -> str:
         """Move the current snippet selection with the keyboard arrow keys."""
@@ -823,6 +842,28 @@ class SnippetSearchWindow:
                 current_parent = parent_by_name.get(current_parent)
         return enabled_by_name
 
+    def _hierarchy_focus_targets(
+        self, rows: List[Tuple[str, Optional[str], bool]], node_name: str
+    ) -> Dict[str, bool]:
+        """Enable one node's subtree and the ancestors required to reach it."""
+        parent_by_name, children_by_parent = self._hierarchy_relations(
+            rows, self.HIERARCHY_ROOT_ID
+        )
+        enabled_by_name = {name: False for name, _, _ in rows}
+
+        def enable_subtree(current_name: str) -> None:
+            if current_name in enabled_by_name:
+                enabled_by_name[current_name] = True
+            for child_name in children_by_parent.get(current_name, []):
+                enable_subtree(child_name)
+
+        enable_subtree(node_name)
+        current_parent = parent_by_name.get(node_name)
+        while current_parent and current_parent != self.HIERARCHY_ROOT_ID:
+            enabled_by_name[current_parent] = True
+            current_parent = parent_by_name.get(current_parent)
+        return enabled_by_name
+
     def _apply_hierarchy_targets(
         self, rows: List[Tuple[str, Optional[str], bool]], target_enabled: Dict[str, bool]
     ) -> None:
@@ -926,7 +967,29 @@ class SnippetSearchWindow:
         return "break"
 
     def _on_hierarchy_double_click(self, event: tk.Event) -> str:
-        """Open mapped document on text double-click and keep indicator behavior."""
+        """Enable only the selected hierarchy subtree on double-click."""
+        item_id = self.hierarchy_tree.identify_row(event.y)
+        if not item_id:
+            return "break"
+
+        clicked_element = self.hierarchy_tree.identify("element", event.x, event.y)
+        if clicked_element == "Treeitem.indicator":
+            return ""
+
+        self._cancel_pending_hierarchy_toggle()
+        self.hierarchy_tree.selection_set(item_id)
+        if not self.hierarchy_rows_provider:
+            return "break"
+
+        rows = list(self.hierarchy_rows_provider())
+        if item_id == self.HIERARCHY_ROOT_ID:
+            self._set_all_hierarchy_enabled(True)
+        elif item_id in {name for name, _, _ in rows}:
+            self._apply_hierarchy_targets(rows, self._hierarchy_focus_targets(rows, item_id))
+        return "break"
+
+    def _on_hierarchy_right_click(self, event: tk.Event) -> str:
+        """Open the mapped hierarchy document on right-click."""
         item_id = self.hierarchy_tree.identify_row(event.y)
         if not item_id:
             return "break"
@@ -938,7 +1001,7 @@ class SnippetSearchWindow:
         self._cancel_pending_hierarchy_toggle()
         self.hierarchy_tree.selection_set(item_id)
         if item_id == self.HIERARCHY_ROOT_ID:
-            return ""
+            return "break"
         if self.on_hierarchy_open:
             self.on_hierarchy_open(item_id)
         return "break"

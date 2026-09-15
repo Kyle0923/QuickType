@@ -224,7 +224,7 @@ class QuickTypeApp:
             if not md_path.exists():
                 md_path.touch()
             subprocess.Popen(
-                ["code", "-r", str(md_path)],
+                ["code", "-r", "-g", f"{str(md_path)}:1:1"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

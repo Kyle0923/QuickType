@@ -69,6 +69,25 @@ def test_hierarchy_toggle_child_activates_disabled_ancestors_only():
     )["parent"] == "PARTIAL"
 
 
+def test_hierarchy_focus_enables_only_selected_subtree_and_its_ancestors():
+    window = object.__new__(SnippetSearchWindow)
+    rows = [
+        ("parent", None, True),
+        ("selected", "parent", True),
+        ("selected_child", "selected", True),
+        ("sibling", "parent", True),
+        ("other_branch", None, True),
+    ]
+
+    assert window._hierarchy_focus_targets(rows, "selected") == {
+        "parent": True,
+        "selected": True,
+        "selected_child": True,
+        "sibling": False,
+        "other_branch": False,
+    }
+
+
 def test_fuzzy_matcher_handles_fzf_style_subsequence_queries():
     matcher = FuzzyMatcher(threshold=60)
     snippets = [
@@ -379,7 +398,74 @@ def test_search_window_alt_enter_handler_uses_type_mode():
     assert called["mode"] == "type"
 
 
-def test_search_window_double_click_opens_matching_snippet_location():
+def test_search_window_double_click_pastes_matching_snippet():
+    window = object.__new__(SnippetSearchWindow)
+    window.filtered_snippets = [
+        Snippet(name="demo", payload="x", location="/tmp/demo.md:12"),
+    ]
+
+    called = {}
+
+    class FakeListbox:
+        def nearest(self, y):
+            _ = y
+            return 0
+
+        def selection_clear(self, start, end):
+            _ = start, end
+
+        def selection_set(self, index):
+            called["selected"] = index
+
+        def activate(self, index):
+            called["activated"] = index
+
+    window.snippet_listbox = FakeListbox()
+    window.selected_index = -1
+    window._update_preview = lambda snippet: called.setdefault("preview", snippet.location)
+    window._insert_selected = lambda mode: called.setdefault("mode", mode)
+
+    result = window._on_snippet_double_click(type("Event", (), {"y": 5, "state": 0})())
+
+    assert result == "break"
+    assert called["selected"] == 0
+    assert called["activated"] == 0
+    assert called["preview"] == "/tmp/demo.md:12"
+    assert called["mode"] == "paste"
+
+
+def test_search_window_ctrl_double_click_uses_keyboard_mode():
+    window = object.__new__(SnippetSearchWindow)
+    window.filtered_snippets = [Snippet(name="demo", payload="x")]
+
+    class FakeListbox:
+        def nearest(self, y):
+            _ = y
+            return 0
+
+        def selection_clear(self, start, end):
+            _ = start, end
+
+        def selection_set(self, index):
+            _ = index
+
+        def activate(self, index):
+            _ = index
+
+    called = {}
+    window.snippet_listbox = FakeListbox()
+    window._update_preview = lambda snippet: None
+    window._insert_selected = lambda mode: called.setdefault("mode", mode)
+
+    result = window._on_snippet_double_click(
+        type("Event", (), {"y": 5, "state": window.CONTROL_MODIFIER_MASK})()
+    )
+
+    assert result == "break"
+    assert called["mode"] == "type"
+
+
+def test_search_window_right_click_opens_matching_snippet_location():
     window = object.__new__(SnippetSearchWindow)
     window.filtered_snippets = [
         Snippet(name="demo", payload="x", location="/tmp/demo.md:12"),
@@ -406,7 +492,7 @@ def test_search_window_double_click_opens_matching_snippet_location():
     window._update_preview = lambda snippet: called.setdefault("preview", snippet.location)
     window._open_snippet_location = lambda snippet: called.setdefault("opened", snippet.location)
 
-    result = window._on_snippet_double_click(type("Event", (), {"y": 5})())
+    result = window._on_snippet_right_click(type("Event", (), {"y": 5})())
 
     assert result == "break"
     assert called["selected"] == 0
