@@ -121,16 +121,8 @@ class HierarchyManager:
         return names
 
     def get_mapped_document_names(self) -> List[str]:
-        """Return mapped document names in hierarchy order.
-
-        Leaf nodes are guaranteed by compose validation.
-        Map nodes are optional and included only when their markdown file exists.
-        """
-        names: List[str] = []
-        for node_name in self.tree.node_names():
-            if self._document_path(node_name).exists():
-                names.append(node_name)
-        return names
+        """Return the leaf document names in hierarchy order."""
+        return self.tree.leaf_names()
 
     def get_subtree_node_names(self, node_name: str) -> List[str]:
         """Return all node names inside a subtree, including the root node itself."""
@@ -139,18 +131,17 @@ class HierarchyManager:
         return [child.name for child in self._iter_subtree(node)]
 
     def get_active_document_names(self) -> List[str]:
-        """Return active mapped document names in hierarchy order.
-
-        Leaf nodes are always expected to have files by compose validation.
-        Map nodes are optional and included only when their markdown file exists.
-        """
+        """Return active leaf document names in hierarchy order."""
         names: List[str] = []
-        for node_name in self.tree.node_names():
-            if not self.is_node_active(node_name):
-                continue
-            if self._document_path(node_name).exists():
+        for node_name in self.tree.leaf_names():
+            if self.is_node_active(node_name):
                 names.append(node_name)
         return names
+
+    def is_leaf_node(self, node_name: str) -> bool:
+        """Return whether a hierarchy node may have a mapped Markdown document."""
+        self._assert_node_exists(node_name)
+        return self._node_index[node_name].is_leaf
 
     def _assert_node_exists(self, node_name: str) -> None:
         if node_name not in self._node_index:
@@ -174,21 +165,18 @@ class HierarchyManager:
 
         tree = cls._parse_root_yaml(root_file)
         cls._validate_leaf_files(data_dir, tree)
+        cls._validate_branch_files(data_dir, tree)
         return tree
 
     @classmethod
     def get_mapped_document_names_from_tree(cls, data_dir: Path, tree: DocumentTree) -> List[str]:
-        """Return mapped document names in tree order.
+        """Return leaf document names in tree order.
 
-        Leaf nodes must exist (validated by compose).
-        Map nodes are optional and included only when a matching markdown file exists.
+        ``data_dir`` is retained for compatibility; :meth:`compose` performs
+        the file validation before a tree is used.
         """
-        names: List[str] = []
-        for name in tree.node_names():
-            md_path = data_dir / f"{name}.md"
-            if md_path.exists():
-                names.append(name)
-        return names
+        _ = data_dir
+        return tree.leaf_names()
 
     @classmethod
     def _validate_leaf_files(cls, data_dir: Path, tree: DocumentTree) -> None:
@@ -196,6 +184,22 @@ class HierarchyManager:
         if missing:
             names = ", ".join(missing)
             raise HierarchyFormatError(f"Leaf node markdown file(s) missing: {names}")
+
+    @classmethod
+    def _validate_branch_files(cls, data_dir: Path, tree: DocumentTree) -> None:
+        """Reject documents named after branch nodes; only leaves may be mapped."""
+        branches = [
+            node.name
+            for node in tree.all_nodes()
+            if node.name != tree.root.name
+            and not node.is_leaf
+            and (data_dir / f"{node.name}.md").exists()
+        ]
+        if branches:
+            names = ", ".join(branches)
+            raise HierarchyFormatError(
+                f"Branch node markdown file(s) are not allowed; rename with '_' or remove: {names}"
+            )
 
     @classmethod
     def _parse_root_yaml(cls, root_file: Path) -> DocumentTree:

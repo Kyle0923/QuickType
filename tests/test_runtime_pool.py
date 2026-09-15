@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from quicktype.core import SnippetEngine
 from quicktype.snippet import SnippetManager
 
@@ -12,17 +14,18 @@ def _simple_note(title: str, command: str) -> str:
     return f"# {title}\n```\n{command}\n```\n"
 
 
-def test_snippet_manager_loads_all_markdowns_and_composes_active_pool(tmp_path: Path) -> None:
+def test_snippet_manager_activates_only_leaf_documents_from_the_hierarchy(tmp_path: Path) -> None:
     _write(
         tmp_path / "root.yaml",
         """root:
   - parent:
+    - _parent
     - leaf_a
     - leaf_b
 """,
     )
 
-    _write(tmp_path / "parent.md", _simple_note("parent help", "echo parent"))
+    _write(tmp_path / "_parent.md", _simple_note("parent help", "echo parent"))
     _write(tmp_path / "leaf_a.md", _simple_note("leaf a", "echo a"))
     _write(tmp_path / "leaf_b.md", _simple_note("leaf b", "echo b"))
     _write(tmp_path / "orphan.md", _simple_note("orphan", "echo orphan"))
@@ -30,9 +33,9 @@ def test_snippet_manager_loads_all_markdowns_and_composes_active_pool(tmp_path: 
     manager = SnippetManager(data_dir=tmp_path)
 
     all_sources = sorted({snippet.group for snippet in manager.list_all_snippets()})
-    assert all_sources == ["leaf_a", "leaf_b", "orphan", "parent"]
+    assert all_sources == ["_parent", "leaf_a", "leaf_b", "orphan"]
 
-    assert manager.active_source_names() == ["parent", "leaf_a", "leaf_b"]
+    assert manager.active_source_names() == ["_parent", "leaf_a", "leaf_b"]
 
     active_names = sorted(snippet.name for snippet in manager.list_snippets())
     assert active_names == ["leaf a", "leaf b", "parent help"]
@@ -49,29 +52,25 @@ def test_subtree_toggle_recomposes_search_pool(tmp_path: Path) -> None:
 """,
     )
 
-    _write(tmp_path / "windbg.md", _simple_note("bugcheck", "!analyze -v"))
     _write(tmp_path / "pagefault.md", _simple_note("pf", "!gpagefault"))
-    _write(tmp_path / "shell.md", _simple_note("shell", "echo shell"))
     _write(tmp_path / "pwsh.md", _simple_note("dir", "Get-ChildItem"))
 
     manager = SnippetManager(data_dir=tmp_path)
 
     manager.disable_subtree("windbg")
-    assert manager.active_source_names() == ["shell", "pwsh"]
-    assert sorted(snippet.name for snippet in manager.list_snippets()) == ["dir", "shell"]
+    assert manager.active_source_names() == ["pwsh"]
+    assert sorted(snippet.name for snippet in manager.list_snippets()) == ["dir"]
 
     manager.set_subtree_enabled("windbg", True)
-    assert manager.active_source_names() == ["windbg", "pagefault", "shell", "pwsh"]
+    assert manager.active_source_names() == ["pagefault", "pwsh"]
 
     manager.disable_subtree("root")
     assert manager.list_snippets() == []
 
     manager.enable_all_subtrees()
     assert sorted(snippet.name for snippet in manager.list_snippets()) == [
-        "bugcheck",
         "dir",
         "pf",
-        "shell",
     ]
 
 
@@ -116,3 +115,19 @@ def test_remove_is_not_supported_in_engine(tmp_path: Path) -> None:
     manager = SnippetManager(data_dir=tmp_path)
     engine = SnippetEngine(manager)
     assert engine.remove_snippet("existing") is False
+
+
+def test_add_snippet_rejects_branch_node(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "root.yaml",
+        """root:
+  - category:
+    - notes
+""",
+    )
+    _write(tmp_path / "notes.md", _simple_note("existing", "echo existing"))
+
+    manager = SnippetManager(data_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="leaf nodes: category"):
+        manager.add_snippet("new item", None, "echo hello", "category")

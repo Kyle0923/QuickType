@@ -5,6 +5,70 @@ from quicktype.hotkey import HotkeyManager
 import sys
 
 
+def test_hierarchy_checkbox_states_are_derived_from_descendants():
+    window = object.__new__(SnippetSearchWindow)
+    rows = [
+        ("parent", None, True),
+        ("enabled_child", "parent", True),
+        ("disabled_child", "parent", False),
+    ]
+
+    states = window._hierarchy_states(rows)
+
+    assert states[window.HIERARCHY_ROOT_ID] == "PARTIAL"
+    assert states["parent"] == "PARTIAL"
+    assert states["enabled_child"] == "CHECKED"
+    assert states["disabled_child"] == "UNCHECKED"
+
+
+def test_hierarchy_branch_is_unchecked_when_its_last_child_is_disabled():
+    window = object.__new__(SnippetSearchWindow)
+    rows = [
+        ("parent", None, True),
+        ("only_child", "parent", False),
+    ]
+
+    states = window._hierarchy_states(rows)
+
+    assert states[window.HIERARCHY_ROOT_ID] == "UNCHECKED"
+    assert states["parent"] == "UNCHECKED"
+
+
+def test_hierarchy_toggle_partial_branch_enables_its_full_subtree():
+    window = object.__new__(SnippetSearchWindow)
+    rows = [
+        ("parent", None, True),
+        ("enabled_child", "parent", True),
+        ("disabled_child", "parent", False),
+    ]
+
+    assert window._hierarchy_toggle_targets(rows, "parent") == {
+        "parent": True,
+        "enabled_child": True,
+        "disabled_child": True,
+    }
+
+
+def test_hierarchy_toggle_child_activates_disabled_ancestors_only():
+    window = object.__new__(SnippetSearchWindow)
+    rows = [
+        ("parent", None, False),
+        ("selected_child", "parent", False),
+        ("other_child", "parent", False),
+    ]
+
+    target = window._hierarchy_toggle_targets(rows, "selected_child")
+
+    assert target == {
+        "parent": True,
+        "selected_child": True,
+        "other_child": False,
+    }
+    assert window._hierarchy_states(
+        [(name, parent, target[name]) for name, parent, _ in rows]
+    )["parent"] == "PARTIAL"
+
+
 def test_fuzzy_matcher_handles_fzf_style_subsequence_queries():
     matcher = FuzzyMatcher(threshold=60)
     snippets = [

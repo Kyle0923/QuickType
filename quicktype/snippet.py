@@ -221,7 +221,7 @@ class SnippetManager:
                 self.snippets[snippet.name] = snippet
 
     def active_source_names(self) -> List[str]:
-        """Return active source names based on enabled hierarchy subtrees."""
+        """Return active leaf sources defined by the document hierarchy."""
         return self.hierarchy_manager.get_active_document_names()
 
     def list_all_snippets(self) -> List[Snippet]:
@@ -275,6 +275,12 @@ class SnippetManager:
         )
         if not snippet.name:
             raise ValueError("name must not be empty")
+
+        if (
+            self.hierarchy_manager.has_node(source_name)
+            and not self.hierarchy_manager.is_leaf_node(source_name)
+        ):
+            raise ValueError(f"Snippets can only be added to leaf nodes: {source_name}")
 
         md_path = self.data_dir / f"{source_name}.md"
         block = self._format_markdown_snippet(snippet)

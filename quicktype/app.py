@@ -215,7 +215,10 @@ class QuickTypeApp:
         return self.engine.list_snippets()
 
     def _open_hierarchy_document(self, node_name: str) -> None:
-        """Open the mapped hierarchy markdown file in VS Code."""
+        """Open a leaf node's mapped Markdown file in VS Code."""
+        if not self.manager.hierarchy_manager.is_leaf_node(node_name):
+            return
+
         md_path = self.manager.data_dir / f"{node_name}.md"
         try:
             if not md_path.exists():

@@ -20,7 +20,6 @@ def test_hierarchy_manager_composes_nested_tree_and_leafs(tmp_path: Path) -> Non
     - crashdump
 """,
     )
-    _write(data_dir / "windbg.md", "# cmd\n```\n!analyze -v\n```\n")
     _write(data_dir / "pagefault.md", "# pf\n```\n!gpagefault\n```\n")
     _write(data_dir / "crashdump.md", "# cd\n```\n.dump /ma\n```\n")
 
@@ -45,7 +44,7 @@ def test_hierarchy_manager_rejects_missing_leaf_markdown(tmp_path: Path) -> None
         HierarchyManager.compose(data_dir)
 
 
-def test_hierarchy_manager_includes_optional_map_docs_when_present(tmp_path: Path) -> None:
+def test_hierarchy_manager_rejects_branch_markdown_files(tmp_path: Path) -> None:
     data_dir = tmp_path
 
     _write(
@@ -58,6 +57,24 @@ def test_hierarchy_manager_includes_optional_map_docs_when_present(tmp_path: Pat
     _write(data_dir / "shell.md", "# shell help\n```\nhelp\n```\n")
     _write(data_dir / "pwsh.md", "# list\n```\nGet-ChildItem\n```\n")
 
-    manager = HierarchyManager(data_dir)
+    with pytest.raises(HierarchyFormatError, match="not allowed; rename.*shell"):
+        HierarchyManager(data_dir)
 
-    assert manager.get_mapped_document_names() == ["shell", "pwsh"]
+
+def test_hierarchy_manager_maps_only_leaf_documents(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "root.yaml",
+        """root:
+  - shell:
+    - pwsh
+""",
+    )
+    _write(tmp_path / "_shell.md", "# private note\n```\nignored\n```\n")
+    _write(tmp_path / "pwsh.md", "# list\n```\nGet-ChildItem\n```\n")
+
+    manager = HierarchyManager(tmp_path)
+
+    assert manager.get_mapped_document_names() == ["pwsh"]
+    assert manager.get_active_document_names() == ["pwsh"]
+    assert manager.is_leaf_node("shell") is False
+    assert manager.is_leaf_node("pwsh") is True

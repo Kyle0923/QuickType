@@ -12,19 +12,19 @@ def test_parser_excludes_blockquotes():
     sections = parse_data_directory(data_dir)
 
     # Test bugcheck section
-    bugcheck = [s for s in sections.get('windbg', [])
+    bugcheck = [s for s in sections.get('_windbg', [])
                 if s.name == 'bugcheck'][0]
 
     # Should match: name, description, code content
     assert 'bugcheck' in bugcheck.searchable_text
     assert 'decode' in bugcheck.searchable_text
-    assert '!analyze' in bugcheck.searchable_text
-    assert '!gs' in bugcheck.searchable_text
+    assert 'analyze' in bugcheck.searchable_text
+    assert 'gs' in bugcheck.searchable_text
 
     # Should NOT match: blockquote text
     assert 'Analyzes a bugcheck' not in bugcheck.searchable_text
     assert 'displays detailed information' not in bugcheck.searchable_text
-    assert bugcheck.location.endswith('windbg.md:1')
+    assert bugcheck.location.endswith('_windbg.md:1')
 
     print("✓ Blockquotes correctly excluded from search")
 
@@ -32,9 +32,7 @@ def test_parser_excludes_blockquotes():
 def test_parser_extracts_all_sections():
     """Verify all sections are extracted."""
     data_dir = DEFAULT_DATA_DIR
-    sections = parse_data_directory(data_dir)
-
-    windbg_sections = sections.get('windbg', [])
+    windbg_sections = parse_data_directory(data_dir).get('_windbg', [])
     assert len(windbg_sections) == 4, f"Expected 4 sections, got {len(windbg_sections)}"
 
     names = [s.name for s in windbg_sections]
@@ -49,12 +47,10 @@ def test_parser_extracts_all_sections():
 def test_parser_preserves_placeholders():
     """Verify placeholders are preserved in content."""
     data_dir = DEFAULT_DATA_DIR
-    sections = parse_data_directory(data_dir)
-
-    tcp_section = [s for s in sections.get('windbg', [])
+    tcp_section = [s for s in parse_data_directory(data_dir).get('_windbg', [])
                    if s.description == 'open a debug server'][0]
 
-    assert '{{port_num:5050}}' in tcp_section.payload
+    assert '{{port:5050}}' in tcp_section.payload
 
     print("✓ Placeholders preserved in content")
 
@@ -62,10 +58,9 @@ def test_parser_preserves_placeholders():
 def test_parser_extracts_quote_into_snippet_note():
     """Verify markdown blockquote text is stored for note tooltips."""
     data_dir = DEFAULT_DATA_DIR
-    sections = parse_data_directory(data_dir)
-
-    bugcheck = [s for s in sections.get('windbg', []) if s.name == 'bugcheck'][0]
-    tcp_section = [s for s in sections.get('windbg', []) if s.name == 'start TCP server'][0]
+    windbg_sections = parse_data_directory(data_dir).get('_windbg', [])
+    bugcheck = [s for s in windbg_sections if s.name == 'bugcheck'][0]
+    tcp_section = [s for s in windbg_sections if s.name == 'start TCP server'][0]
 
     assert bugcheck.note == 'Analyzes a bugcheck code and displays detailed information'
     assert tcp_section.note == 'Opens a debugging server on the specified port\nand tell me more'

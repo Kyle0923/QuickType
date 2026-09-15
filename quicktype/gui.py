@@ -714,16 +714,16 @@ class SnippetSearchWindow:
             return
 
         rows = self.hierarchy_rows_provider()
-        all_enabled = all(enabled for _, _, enabled in rows) if rows else True
+        states = self._hierarchy_states(rows)
         self.hierarchy_tree.insert(
             "",
             tk.END,
             iid=self.HIERARCHY_ROOT_ID,
-            text=self._hierarchy_label("root", "CHECKED" if all_enabled else "UNCHECKED"),
+            text=self._hierarchy_label(self.HIERARCHY_ROOT_LABEL, states[self.HIERARCHY_ROOT_ID]),
         )
-        for node_name, parent_name, enabled in rows:
+        for node_name, parent_name, _ in rows:
             parent_id = parent_name if parent_name else self.HIERARCHY_ROOT_ID
-            label = self._hierarchy_label(node_name, "CHECKED" if enabled else "UNCHECKED")
+            label = self._hierarchy_label(node_name, states[node_name])
             self.hierarchy_tree.insert(parent_id, tk.END, iid=node_name, text=label)
 
         if not self._hierarchy_tree_initialized:
@@ -758,6 +758,101 @@ class SnippetSearchWindow:
         for item_id in self._iter_tree_items():
             self.hierarchy_tree.item(item_id, open=True)
 
+    def _hierarchy_states(self, rows: List[Tuple[str, Optional[str], bool]]) -> Dict[str, str]:
+        """Return checkbox states derived from each node's complete subtree."""
+        children_by_parent: Dict[str, List[str]] = {self.HIERARCHY_ROOT_ID: []}
+        enabled_by_name = {name: enabled for name, _, enabled in rows}
+        for node_name, parent_name, _ in rows:
+            parent_id = parent_name if parent_name else self.HIERARCHY_ROOT_ID
+            children_by_parent.setdefault(parent_id, []).append(node_name)
+
+        states: Dict[str, str] = {}
+
+        def visit(node_name: str) -> List[bool]:
+            child_names = children_by_parent.get(node_name, [])
+            if not child_names:
+                subtree_enabled = [enabled_by_name[node_name]]
+            else:
+                subtree_enabled = []
+            for child_name in child_names:
+                subtree_enabled.extend(visit(child_name))
+            if all(subtree_enabled):
+                states[node_name] = "CHECKED"
+            elif any(subtree_enabled):
+                states[node_name] = "PARTIAL"
+            else:
+                states[node_name] = "UNCHECKED"
+            return subtree_enabled
+
+        visit(self.HIERARCHY_ROOT_ID)
+        return states
+
+    @staticmethod
+    def _hierarchy_relations(
+        rows: List[Tuple[str, Optional[str], bool]], root_id: str
+    ) -> Tuple[Dict[str, Optional[str]], Dict[str, List[str]]]:
+        """Build parent and child indexes for hierarchy rows."""
+        parent_by_name = {name: parent or root_id for name, parent, _ in rows}
+        children_by_parent: Dict[str, List[str]] = {root_id: []}
+        for node_name, parent_name, _ in rows:
+            children_by_parent.setdefault(parent_name or root_id, []).append(node_name)
+        return parent_by_name, children_by_parent
+
+    def _hierarchy_toggle_targets(
+        self, rows: List[Tuple[str, Optional[str], bool]], node_name: str
+    ) -> Dict[str, bool]:
+        """Return effective node states after applying a checkbox click."""
+        enabled_by_name = {name: enabled for name, _, enabled in rows}
+        parent_by_name, children_by_parent = self._hierarchy_relations(
+            rows, self.HIERARCHY_ROOT_ID
+        )
+        states = self._hierarchy_states(rows)
+        target_enabled = states[node_name] != "CHECKED"
+
+        def set_subtree_enabled(current_name: str) -> None:
+            if current_name in enabled_by_name:
+                enabled_by_name[current_name] = target_enabled
+            for child_name in children_by_parent.get(current_name, []):
+                set_subtree_enabled(child_name)
+
+        set_subtree_enabled(node_name)
+        if target_enabled:
+            current_parent = parent_by_name.get(node_name)
+            while current_parent and current_parent != self.HIERARCHY_ROOT_ID:
+                enabled_by_name[current_parent] = True
+                current_parent = parent_by_name.get(current_parent)
+        return enabled_by_name
+
+    def _apply_hierarchy_targets(
+        self, rows: List[Tuple[str, Optional[str], bool]], target_enabled: Dict[str, bool]
+    ) -> None:
+        """Persist effective states, including descendants hidden by disabled ancestors."""
+        if not self.on_hierarchy_toggle:
+            return
+
+        parent_by_name, _ = self._hierarchy_relations(rows, self.HIERARCHY_ROOT_ID)
+        updated_snippets = self.snippets
+        # Clear every explicit disable first; this makes the desired effective state unambiguous.
+        for node_name, _, _ in rows:
+            updated_snippets = self.on_hierarchy_toggle(node_name, True)
+        # Disabling only the highest inactive nodes preserves the requested active descendants.
+        for node_name, enabled in target_enabled.items():
+            parent_name = parent_by_name[node_name]
+            is_topmost_disabled = (
+                parent_name == self.HIERARCHY_ROOT_ID or target_enabled[parent_name]
+            )
+            if not enabled and is_topmost_disabled:
+                updated_snippets = self.on_hierarchy_toggle(node_name, False)
+
+        self.snippets = updated_snippets
+        active_query = self.search_var.get().strip()
+        if active_query:
+            self.filtered_snippets = self.fuzzy_matcher.search(active_query, self.snippets)
+            self._update_snippet_list(self.filtered_snippets)
+        else:
+            self._update_snippet_list(self.snippets)
+        self._refresh_hierarchy_tree()
+
     def _set_all_hierarchy_enabled(self, enabled: bool) -> None:
         """Enable or disable every hierarchy subtree."""
         if not self.on_hierarchy_toggle or not self.hierarchy_rows_provider:
@@ -767,52 +862,28 @@ class SnippetSearchWindow:
         if not rows:
             return
 
-        updated_snippets = self.snippets
-        for node_name, _, _ in rows:
-            updated_snippets = self.on_hierarchy_toggle(node_name, enabled)
-
-        self.snippets = updated_snippets
-
-        active_query = self.search_var.get().strip()
-        if active_query:
-            self.filtered_snippets = self.fuzzy_matcher.search(active_query, self.snippets)
-            self._update_snippet_list(self.filtered_snippets)
-        else:
-            self._update_snippet_list(self.snippets)
-
-        self._refresh_hierarchy_tree()
+        self._apply_hierarchy_targets(rows, {node_name: enabled for node_name, _, _ in rows})
 
     def _toggle_hierarchy_node(self, node_name: str) -> None:
         """Toggle a hierarchy subtree and refresh snippets/tree state."""
+
         if node_name == self.HIERARCHY_ROOT_ID:
             rows = list(self.hierarchy_rows_provider()) if self.hierarchy_rows_provider else []
             if not rows:
                 return
 
-            all_enabled = all(enabled for _, _, enabled in rows)
-            self._set_all_hierarchy_enabled(not all_enabled)
+            root_state = self._hierarchy_states(rows)[self.HIERARCHY_ROOT_ID]
+            self._set_all_hierarchy_enabled(root_state != "CHECKED")
             return
 
         if not self.on_hierarchy_toggle or not self.hierarchy_rows_provider:
             return
 
         rows = self.hierarchy_rows_provider()
-        enabled_by_name = {name: enabled for name, _, enabled in rows}
-        if node_name not in enabled_by_name:
+        if node_name not in {name for name, _, _ in rows}:
             return
 
-        next_enabled = not enabled_by_name[node_name]
-        updated_snippets = self.on_hierarchy_toggle(node_name, next_enabled)
-        self.snippets = updated_snippets
-
-        active_query = self.search_var.get().strip()
-        if active_query:
-            self.filtered_snippets = self.fuzzy_matcher.search(active_query, self.snippets)
-            self._update_snippet_list(self.filtered_snippets)
-        else:
-            self._update_snippet_list(self.snippets)
-
-        self._refresh_hierarchy_tree()
+        self._apply_hierarchy_targets(rows, self._hierarchy_toggle_targets(rows, node_name))
 
     def _schedule_hierarchy_toggle(self, node_name: str) -> None:
         """Delay single-click toggle so double-click can cancel it."""
