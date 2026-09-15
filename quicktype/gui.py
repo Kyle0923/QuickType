@@ -34,6 +34,7 @@ class SnippetSearchWindow:
         hierarchy_rows_provider: Optional[Callable[[], List[Tuple[str, Optional[str], bool]]]] = None,
         on_hierarchy_toggle: Optional[Callable[[str, bool], List[Snippet]]] = None,
         on_hierarchy_open: Optional[Callable[[str], None]] = None,
+        on_reload: Optional[Callable[[], List[Snippet]]] = None,
     ):
         """
         Initialize the snippet search window.
@@ -54,6 +55,7 @@ class SnippetSearchWindow:
         self.hierarchy_rows_provider = hierarchy_rows_provider
         self.on_hierarchy_toggle = on_hierarchy_toggle
         self.on_hierarchy_open = on_hierarchy_open
+        self.on_reload = on_reload
         self.fuzzy_matcher = FuzzyMatcher(threshold=60)
         self._final_original_text = ""
         self._placeholder_names: List[str] = []
@@ -146,6 +148,12 @@ class SnippetSearchWindow:
 
         hierarchy_frame = ttk.LabelFrame(sidebar_split, text="Navigation")
 
+        hierarchy_header = ttk.Frame(hierarchy_frame)
+        hierarchy_header.pack(fill=tk.X)
+        self._create_action_button(
+            hierarchy_header, text="Reload", command=self._reload_data
+        ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
+
         hierarchy_scrollbar = ttk.Scrollbar(hierarchy_frame)
         hierarchy_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -164,18 +172,24 @@ class SnippetSearchWindow:
         self.hierarchy_tree.bind("<Return>", self._on_hierarchy_keyboard_toggle)
 
         variables_frame = ttk.LabelFrame(sidebar_split, text="Variables")
-        variables_frame.rowconfigure(0, weight=1)
+        variables_frame.rowconfigure(1, weight=1)
         variables_frame.columnconfigure(0, weight=1)
 
+        variables_header = ttk.Frame(variables_frame)
+        variables_header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self._create_action_button(
+            variables_header, text="Clear", command=self._clear_variables
+        ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
+
         self.variable_canvas = tk.Canvas(variables_frame, borderwidth=0, highlightthickness=0)
-        self.variable_canvas.grid(row=0, column=0, sticky="nsew")
+        self.variable_canvas.grid(row=1, column=0, sticky="nsew")
 
         variable_scrollbar = ttk.Scrollbar(
             variables_frame,
             orient=tk.VERTICAL,
             command=self.variable_canvas.yview,
         )
-        variable_scrollbar.grid(row=0, column=1, sticky="ns")
+        variable_scrollbar.grid(row=1, column=1, sticky="ns")
         self.variable_canvas.configure(yscrollcommand=variable_scrollbar.set)
 
         self.variable_container = ttk.Frame(self.variable_canvas)
@@ -258,20 +272,8 @@ class SnippetSearchWindow:
         final_header = ttk.Frame(final_frame)
         final_header.pack(fill=tk.X)
 
-        tk.Button(
-            final_header,
-            text="Reset",
-            width=6,
-            fg="#000000",
-            activeforeground="#666666",
-            activebackground="#E0E0E0",
-            font=("Segoe UI", 9, "bold"),
-            relief=tk.RIDGE,
-            bd=1,
-            padx=2,
-            pady=1,
-            cursor="hand2",
-            command=self._reset_final_text,
+        self._create_action_button(
+            final_header, text="Reset", command=self._reset_final_text
         ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
 
         final_y_scrollbar = ttk.Scrollbar(final_frame)
@@ -308,6 +310,25 @@ class SnippetSearchWindow:
         # Update list with all snippets
         self._update_snippet_list(self.snippets)
         self._refresh_hierarchy_tree()
+
+    @staticmethod
+    def _create_action_button(parent: tk.Misc, text: str, command: Callable[[], None]) -> tk.Button:
+        """Create a compact pane action button with the shared Final-pane styling."""
+        return tk.Button(
+            parent,
+            text=text,
+            width=6,
+            fg="#000000",
+            activeforeground="#666666",
+            activebackground="#E0E0E0",
+            font=("Segoe UI", 9, "bold"),
+            relief=tk.RIDGE,
+            bd=1,
+            padx=2,
+            pady=1,
+            cursor="hand2",
+            command=command,
+        )
 
     def _setup_menu(self) -> None:
         """Create the top-level menu bar with application settings."""
@@ -595,6 +616,22 @@ class SnippetSearchWindow:
         for name, variable_var in self._variable_vars.items():
             variable_var.set(self._placeholder_defaults.get(name, ""))
         self._refresh_final_text_from_variables()
+
+    def _clear_variables(self) -> None:
+        """Clear saved variable values and leave only current snippet placeholders."""
+        self._variable_values.clear()
+        self._render_variable_editor(self._placeholder_names)
+        self._refresh_final_text_from_variables()
+
+    def _reload_data(self) -> None:
+        """Reload the configured data directory and refresh navigation and snippets."""
+        if not self.on_reload:
+            return
+
+        self.snippets = self.on_reload()
+        self._hierarchy_tree_initialized = False
+        self._update_snippet_list(self.snippets)
+        self._refresh_hierarchy_tree()
 
     def _extract_placeholders(self, text: str) -> Tuple[List[str], Dict[str, str]]:
         """Extract unique placeholder names/defaults from {{name[:default]}} tokens."""

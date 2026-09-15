@@ -213,6 +213,13 @@ class SnippetManager:
         self._all_snippets_by_source = parse_data_directory(self.data_dir)
         self._recompose_active_pool()
 
+    def reload(self) -> None:
+        """Clear runtime state and reload hierarchy and snippets from the data directory."""
+        self.hierarchy_manager = HierarchyManager(self.data_dir)
+        self._all_snippets_by_source = {}
+        self.snippets = {}
+        self._load()
+
     def _recompose_active_pool(self) -> None:
         """Rebuild active snippets from loaded markdown data and hierarchy state."""
         self.snippets = {}

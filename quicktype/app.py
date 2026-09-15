@@ -48,6 +48,7 @@ class QuickTypeApp:
             hierarchy_rows_provider=self._get_hierarchy_rows,
             on_hierarchy_toggle=self._set_subtree_enabled,
             on_hierarchy_open=self._open_hierarchy_document,
+            on_reload=self._reload_data,
         )
         # Hide window initially (will show on hotkey)
         self.gui_window.root.withdraw()
@@ -212,6 +213,11 @@ class QuickTypeApp:
     def _set_subtree_enabled(self, node_name: str, enabled: bool) -> List[Snippet]:
         """Set subtree enabled state and return updated active snippet list."""
         self.manager.set_subtree_enabled(node_name, enabled)
+        return self.engine.list_snippets()
+
+    def _reload_data(self) -> List[Snippet]:
+        """Clear in-memory data and reload the configured .data directory."""
+        self.manager.reload()
         return self.engine.list_snippets()
 
     def _open_hierarchy_document(self, node_name: str) -> None:
