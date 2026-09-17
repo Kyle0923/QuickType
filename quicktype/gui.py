@@ -150,9 +150,6 @@ class SnippetSearchWindow:
 
         hierarchy_header = ttk.Frame(hierarchy_frame)
         hierarchy_header.pack(fill=tk.X)
-        self._create_action_button(
-            hierarchy_header, text="Reload", command=self._reload_data
-        ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
 
         hierarchy_scrollbar = ttk.Scrollbar(hierarchy_frame)
         hierarchy_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -276,6 +273,10 @@ class SnippetSearchWindow:
             final_header, text="Reset", command=self._reset_final_text
         ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
 
+        self._create_action_button(
+            final_header, text="Enter", command=self._insert_selected
+        ).pack(side=tk.LEFT, padx=(6, 0), pady=(0, 2))
+
         final_y_scrollbar = ttk.Scrollbar(final_frame)
         final_y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -336,6 +337,7 @@ class SnippetSearchWindow:
         settings_menu = tk.Menu(menubar, tearoff=0)
         settings_menu.add_command(label="Hotkey...", command=self._open_hotkey_dialog)
         menubar.add_cascade(label="Settings", menu=settings_menu)
+        menubar.add_command(label="Reload", command=self._reload_data)
         menubar.add_command(label="Exit", command=self._request_exit)
         self.root.config(menu=menubar)
 
