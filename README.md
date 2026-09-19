@@ -130,10 +130,26 @@ This structure maps to sections in markdown files. Every leaf node **must** map 
 
 Each markdown file contains searchable sections with a strict format. Every section must have exactly:
 
-1. **One L1 header** (`#`) – Short name/title
-2. **At most one L2 header** (`##`) – Brief description
-3. **At most one blockquote block** (lines starting with `>`) – Comment, ignored in search, show up in tooltip
-4. **One code block** (triple backticks) – Actual command or content
+# Snippet Structure Guide
+
+Each snippet follows strict markdown formatting rules regarding cardinality and uniqueness:
+
+* **Name/Title (`#` H1) [Exactly One]:** Acts as the primary identifier and title for the snippet. It is always visible and included in the searchable index.
+* **Description (`##` H2) [At Most One]:** Provides a brief overview or summary of what the snippet does. It is visible in the UI and included in the search text.
+* **Keywords (`###` H3) [At Most One]:** Stores extra search tags or alternative terms. This field is non-visible to the end user but is included for searching.
+* **Explanation (`>` Blockquote) [At Most One]:** Offers detailed notes or usage context. It is visible via tooltips or secondary views but excluded from the search text.
+* **Payload (Code Block) [Exactly One]:** Contains the actual executable command, code snippet, or text block. It is visible in previews and fully searchable.
+
+## Feature Summary Table
+
+| Component | Markdown Syntax | Cardinality | Visibility | Searchable? | Purpose | 
+ | ----- | ----- | ----- | ----- | ----- | ----- | 
+| **Name / Title** | `#` (H1) | **Exactly One** | Visible | Yes | Primary title and snippet identifier | 
+| **Description** | `##` (H2) | **At Most One** | Visible | Yes | Brief summary or purpose of the snippet | 
+| **Keywords** | `###` (H3) | **At Most One** | **Hidden** | Yes | Extra tags and alternative search terms | 
+| **Explanation** | `>` (Blockquote) | **At Most One** | Visible (via tooltip) | No | Detailed notes or usage instructions | 
+| **Payload** | ```` ``` ```` (Code block) | **Exactly One** | Visible (Preview) | Yes | The core command, code, or template | 
+
 
 **Example (`windbg.md`):**
 ````markdown
@@ -147,13 +163,14 @@ Each markdown file contains searchable sections with a strict format. Every sect
 
 # start TCP server
 ## open a debug server
+### port
 > Opens a debugging server on the specified port
 ```
-.server tcp:port={{port num}}
+.server tcp:port={{port_num}}
 ```
 ````
 
-**Searchable text includes:** L1 header + L2 header + code block (blockquotes are excluded)
+**Searchable text includes:** H1 name + optional H2 description + optional H3 keywords + code block (blockquotes are excluded)
 
 **Search behavior:**
 - Query "bugcheck", "decode", "analyze" → ✓ Matches

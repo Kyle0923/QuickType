@@ -130,6 +130,7 @@ def _append_parsed_snippet(
     file_path: Path,
     name: str,
     description: Optional[str],
+    keywords: Optional[str],
     section_lines: List[str],
     location_line: int,
     section_label: str,
@@ -140,15 +141,17 @@ def _append_parsed_snippet(
     try:
         code_block = extract_code_block(section_text)
         quote_block = extract_quote_block(section_text)
+
+        searchable_parts = [name, description, code_block, keywords]
+        searchable_text = " ".join(part for part in searchable_parts if part)
+
         snippets.append(
             Snippet(
                 name=name,
                 description=description,
                 payload=code_block,
                 note=quote_block,
-                searchable_text=(
-                    f"{name} {description} {code_block}" if description else f"{name} {code_block}"
-                ),
+                searchable_text=searchable_text,
                 group=file_path.stem,
                 location=_section_location(file_path, location_line),
             )
@@ -166,20 +169,30 @@ def parse_markdown_file(file_path: Path) -> List[Snippet]:
     for index, (h1_line_index, h1_name) in enumerate(h1_sections):
         h1_end = h1_sections[index + 1][0] if index + 1 < len(h1_sections) else len(lines)
         h1_body_lines = lines[h1_line_index + 1 : h1_end]
-        h2_sections = _heading_sections(h1_body_lines, "## ")
 
+        h2_sections = _heading_sections(h1_body_lines, "## ")
         if len(h2_sections) > 1:
             raise FormatError(
                 f"Invalid format in {file_path} at section '# {h1_name}': "
                 "Expected at most one H2 description"
             )
 
+        h3_sections = _heading_sections(h1_body_lines, "### ")
+        if len(h3_sections) > 1:
+            raise FormatError(
+                f"Invalid format in {file_path} at section '# {h1_name}': "
+                "Expected at most one H3 keywords"
+            )
+
         description = h2_sections[0][1] if h2_sections else None
+        keywords = h3_sections[0][1] if h3_sections else None
+
         _append_parsed_snippet(
             snippets=snippets,
             file_path=file_path,
             name=h1_name,
             description=description,
+            keywords=keywords,
             section_lines=h1_body_lines,
             location_line=h1_line_index + 1,
             section_label=f"# {h1_name}",
